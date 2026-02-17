@@ -73,9 +73,16 @@ docker/
         ├── datasources/
         │   └── prometheus.yml  # Prometheus datasource
         └── dashboards/
-            ├── dashboard.yml   # Dashboard provisioner config
-            └── fibre-dashboard.json  # The actual dashboard
+            ├── dashboard.yml               # Dashboard provisioner config
+            ├── fibre-dashboard.json        # Main dashboard (with node filter)
+            └── fibre-dashboard-public.json # Public-shareable dashboard (all nodes)
 ```
+
+## Public Dashboard
+
+`fibre-dashboard-public.json` is a variant of the main dashboard designed for Grafana's **Share externally** feature. It removes template variables and the built-in annotations datasource, which are unsupported for public sharing. It always displays all configured nodes.
+
+To share it publicly: open the "FIBRE Block Relay (Public)" dashboard in Grafana, click **Share > Share externally**, and enable the public link.
 
 ## Managing Containers
 
