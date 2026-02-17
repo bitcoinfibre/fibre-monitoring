@@ -106,17 +106,14 @@ A Python application that captures tracepoint events using eBPF and exposes them
 - `GET /metrics` (port 9435) - Prometheus metrics endpoint (supports basic auth)
 - `GET /health` (port 9436) - Health check endpoint
 
-**Metrics exposed**:
+**Metrics exposed** (see [METRICS.md](METRICS.md) for full reference):
 ```
-# Block reconstruction
+# FIBRE relay (udp provider probes)
 fibre_blocks_reconstructed_total{node="mynode"} 42
 fibre_block_reconstruction_duration_seconds_bucket{...}
-fibre_block_chunks_used_bucket{...}
-
-# Block deliveries
 fibre_block_deliveries_total{node="mynode",mechanism="fibre_udp",peer="1.2.3.4:8333"} 35
 
-# Block connection (all delivery paths)
+# Block connection (validation provider probe — fires for ALL blocks)
 bitcoin_blocks_connected_total{node="mynode"} 100
 bitcoin_block_connection_duration_seconds_bucket{...}
 bitcoin_block_tx_count_bucket{...}
@@ -187,12 +184,17 @@ A visualization platform for metrics dashboards.
 |--------|------|---------|
 | Prometheus | Metrics | FIBRE performance metrics, block connection stats |
 
-**Dashboard Features**:
-- Block reconstruction time histograms
-- Block delivery tracking by mechanism and peer
-- Block connection performance (time, tx count)
-- Chunk efficiency metrics
-- Real-time block height tracking
+**Dashboard Panels** (top to bottom):
+
+| Panel | What it shows |
+|---|---|
+| **Blocks Reconstructed** | How many blocks were assembled from FIBRE/UDP FEC chunks in the selected time range. If this number is zero, blocks are arriving via compact blocks or full download instead of FIBRE. |
+| **Blocks Sent** | How many blocks this node relayed out to its FIBRE peers. Only relevant if the node acts as a relay sender. |
+| **Block Height** | The latest block height seen by the node. A quick liveness check — if it stops increasing, the node may be stalled or disconnected. |
+| **Block Reconstruction Time** | A time-series graph showing how long it takes to reconstruct each block from UDP chunks (p50, p95, p99 percentiles). Lower is better. Values under 100ms indicate a healthy FIBRE connection; spikes above 1s suggest packet loss or network issues. |
+| **Chunk Throughput** | FIBRE splits each block into small UDP packets called chunks and adds extra chunks using Forward Error Correction (FEC), so the block can be reconstructed even if some packets are lost in transit. This panel plots two lines over time: **Received/s** (all chunks that arrived, including redundant FEC ones) and **Used/s** (only the chunks that were actually needed to reconstruct blocks). When a block arrives, both lines spike. If the two lines are close together, the network is clean. If "received" is noticeably higher than "used", extra FEC chunks are arriving because some packets were lost and needed replacement. |
+| **Chunk Efficiency** | This is the ratio of the two Chunk Throughput lines expressed as a single number: `used / received`. It answers a simple question: out of all the chunks that arrived, what fraction was actually needed? A value of **1.0 (100%)** means every chunk that arrived was used — zero waste, zero packet loss. A value of **0.5 (50%)** means only half the chunks were useful and the other half were FEC replacements for lost packets. A sustained drop points to network-level packet loss between the FIBRE peers. |
+| **Block Delivery by Peer** | A table showing which peers delivered blocks and via which mechanism: **FIBRE/UDP** (green) or **Compact** blocks (orange). This reveals whether FIBRE is actually winning the relay race and which peers are most active. *(Main dashboard only — removed from public dashboard to avoid exposing peer IPs.)* |
 
 ---
 

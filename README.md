@@ -453,37 +453,19 @@ sudo journalctl -u fibre-exporter -f
 
 ## Metrics Reference
 
-### FIBRE Metrics
+See **[METRICS.md](METRICS.md)** for the full metrics reference, including USDT probe origins, label values, histogram buckets, and example PromQL queries.
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `fibre_blocks_reconstructed_total` | Counter | node | Total blocks reconstructed via FIBRE/UDP |
-| `fibre_block_reconstruction_duration_seconds` | Histogram | node | Block reconstruction time |
-| `fibre_block_chunks_used` | Histogram | node | Chunks used per block |
-| `fibre_chunks_received_total` | Counter | node | Total chunks received |
-| `fibre_chunks_used_total` | Counter | node | Total chunks used |
-| `fibre_blocks_sent_total` | Counter | node | Total blocks sent via FIBRE/UDP |
-| `fibre_block_deliveries_total` | Counter | node, mechanism, peer | Block deliveries by mechanism and peer |
-| `fibre_last_block_height` | Gauge | node | Height of most recently processed block |
-
-### Block Connection Metrics
-
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `bitcoin_blocks_connected_total` | Counter | node | Total blocks connected to the chain (all delivery paths) |
-| `bitcoin_block_connection_duration_seconds` | Histogram | node | Time to connect a block to the chain |
-| `bitcoin_block_tx_count` | Histogram | node | Number of transactions per connected block |
-
-### Exporter Self-Monitoring Metrics
+Quick overview:
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `fibre_exporter_up` | Gauge | Whether the exporter is running (1 = up) |
-| `fibre_exporter_start_time_seconds` | Gauge | Unix timestamp when exporter started |
-| `fibre_exporter_events_processed_total` | Counter | Total events processed by type |
-| `fibre_exporter_errors_total` | Counter | Total errors encountered by type |
-| `fibre_exporter_probes_attached` | Gauge | Number of USDT probes attached |
-| `fibre_exporter_info` | Info | Exporter version and configuration |
+| `fibre_blocks_reconstructed_total` | Counter | Blocks reconstructed via FIBRE/UDP |
+| `fibre_block_reconstruction_duration_seconds` | Histogram | Reconstruction time (first packet to complete block) |
+| `fibre_block_deliveries_total` | Counter | Block deliveries by mechanism (`fibre_udp` / `bip152_cmpct`) and peer |
+| `fibre_blocks_sent_total` | Counter | Blocks relayed via UDP |
+| `bitcoin_blocks_connected_total` | Counter | All blocks connected to the chain (any delivery path) |
+| `bitcoin_block_connection_duration_seconds` | Histogram | Block validation time |
+| `fibre_last_block_height` | Gauge | Height of most recently processed block |
 
 ## File Structure
 
@@ -494,6 +476,7 @@ fibre-monitoring/
 ├── generate-certs.sh              # TLS certificate generator
 ├── config.example.yaml            # Example configuration file
 ├── README.md                       # This file
+├── METRICS.md                      # Detailed metrics reference
 ├── ARCHITECTURE.md                 # Architecture documentation
 └── docker/
     ├── docker-compose.yml          # Container orchestration
