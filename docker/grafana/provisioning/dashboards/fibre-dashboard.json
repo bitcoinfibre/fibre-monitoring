@@ -56,7 +56,7 @@
         "textMode": "auto"
       },
       "targets": [
-        { "expr": "round(sum by (node) (increase(fibre_blocks_reconstructed_total{node=~\"$node\"}[$__range])))", "legendFormat": "{{node}}" }
+        { "refId": "A", "expr": "round(sum by (node) (increase(fibre_blocks_reconstructed_total{node=~\"$node\"}[$__range])))", "legendFormat": "{{node}}" }
       ],
       "title": "Blocks Reconstructed",
       "type": "stat"
@@ -87,7 +87,7 @@
         "textMode": "auto"
       },
       "targets": [
-        { "expr": "round(sum by (node) (increase(fibre_blocks_sent_total{node=~\"$node\"}[$__range])))", "legendFormat": "{{node}}" }
+        { "refId": "A", "expr": "round(sum by (node) (increase(fibre_blocks_sent_total{node=~\"$node\"}[$__range])))", "legendFormat": "{{node}}" }
       ],
       "title": "Blocks Sent",
       "type": "stat"
@@ -118,7 +118,7 @@
         "textMode": "auto"
       },
       "targets": [
-        { "expr": "fibre_last_block_height{node=~\"$node\"}", "legendFormat": "{{node}}" }
+        { "refId": "A", "expr": "fibre_last_block_height{node=~\"$node\"}", "legendFormat": "{{node}}" }
       ],
       "title": "Block Height",
       "type": "stat"
@@ -161,9 +161,9 @@
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "expr": "histogram_quantile(0.50, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\"$node\"}[5m])) by (le, node))", "legendFormat": "p50 - {{node}}" },
-        { "expr": "histogram_quantile(0.95, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\"$node\"}[5m])) by (le, node))", "legendFormat": "p95 - {{node}}" },
-        { "expr": "histogram_quantile(0.99, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\"$node\"}[5m])) by (le, node))", "legendFormat": "p99 - {{node}}" }
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\"$node\"}[5m])) by (le, node))", "legendFormat": "p50 - {{node}}" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\"$node\"}[5m])) by (le, node))", "legendFormat": "p95 - {{node}}" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\"$node\"}[5m])) by (le, node))", "legendFormat": "p99 - {{node}}" }
       ],
       "title": "Block Reconstruction Time",
       "type": "timeseries"
@@ -206,8 +206,8 @@
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "expr": "rate(fibre_chunks_used_total{node=~\"$node\"}[5m])", "legendFormat": "Used/s - {{node}}" },
-        { "expr": "rate(fibre_chunks_received_total{node=~\"$node\"}[5m])", "legendFormat": "Received/s - {{node}}" }
+        { "refId": "A", "expr": "rate(fibre_chunks_used_total{node=~\"$node\"}[5m])", "legendFormat": "Used/s - {{node}}" },
+        { "refId": "B", "expr": "rate(fibre_chunks_received_total{node=~\"$node\"}[5m])", "legendFormat": "Received/s - {{node}}" }
       ],
       "title": "Chunk Throughput",
       "type": "timeseries"
@@ -250,7 +250,7 @@
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "expr": "fibre_chunks_used_total{node=~\"$node\"} / fibre_chunks_received_total{node=~\"$node\"}", "legendFormat": "Efficiency - {{node}}" }
+        { "refId": "A", "expr": "fibre_chunks_used_total{node=~\"$node\"} / fibre_chunks_received_total{node=~\"$node\"}", "legendFormat": "Efficiency - {{node}}" }
       ],
       "title": "Chunk Efficiency (Used/Received)",
       "type": "timeseries"
