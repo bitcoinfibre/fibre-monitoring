@@ -22,6 +22,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "How many blocks were assembled from FIBRE/UDP FEC chunks in the selected time range. If this number is zero, blocks are arriving via compact blocks or full download instead of FIBRE.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -53,6 +54,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "How many blocks this node relayed out to its FIBRE peers. Only relevant if the node acts as a relay sender.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -84,6 +86,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "The latest block height seen by the node. A quick liveness check — if it stops increasing, the node may be stalled or disconnected.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -115,6 +118,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "A time-series graph showing how long it takes to reconstruct each block from UDP chunks (p50, p95, p99 percentiles). Lower is better. Values under 100ms indicate a healthy FIBRE connection; spikes above 1s suggest packet loss or network issues.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -160,6 +164,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "FIBRE splits each block into small UDP packets called chunks and adds extra chunks using Forward Error Correction (FEC), so the block can be reconstructed even if some packets are lost in transit. This panel plots two lines over time: Received/s (all chunks that arrived, including redundant FEC ones) and Used/s (only the chunks that were actually needed to reconstruct blocks). When a block arrives, both lines spike. If the two lines are close together, the network is clean. If \"received\" is noticeably higher than \"used\", extra FEC chunks are arriving because some packets were lost and needed replacement.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -204,6 +209,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "This is the ratio of the two Chunk Throughput lines expressed as a single number: used / received. It answers a simple question: out of all the chunks that arrived, what fraction was actually needed? A value of 1.0 (100%) means every chunk that arrived was used — zero waste, zero packet loss. A value of 0.5 (50%) means only half the chunks were useful and the other half were FEC replacements for lost packets. A sustained drop points to network-level packet loss between the FIBRE peers.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
