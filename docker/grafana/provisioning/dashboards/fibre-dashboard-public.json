@@ -201,10 +201,10 @@
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "refId": "A", "expr": "rate(fibre_chunks_used_total{node=~\".*\"}[5m])", "legendFormat": "Used/s - {{node}}" },
-        { "refId": "B", "expr": "rate(fibre_chunks_received_total{node=~\".*\"}[5m])", "legendFormat": "Received/s - {{node}}" }
+        { "refId": "A", "expr": "increase(fibre_chunks_used_total{node=~\".*\"}[5m]) / increase(fibre_blocks_reconstructed_total{node=~\".*\"}[5m])", "legendFormat": "Used/block - {{node}}" },
+        { "refId": "B", "expr": "increase(fibre_chunks_received_total{node=~\".*\"}[5m]) / increase(fibre_blocks_reconstructed_total{node=~\".*\"}[5m])", "legendFormat": "Received/block - {{node}}" }
       ],
-      "title": "Chunk Throughput",
+      "title": "Chunks per Block",
       "type": "timeseries"
     },
     {
