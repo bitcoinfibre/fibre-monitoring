@@ -236,6 +236,8 @@
           },
           "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] },
+          "max": 1,
+          "min": 0,
           "unit": "percentunit"
         }
       },
@@ -246,7 +248,7 @@
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "refId": "A", "expr": "fibre_chunks_used_total{node=~\".*\"} / fibre_chunks_received_total{node=~\".*\"}", "legendFormat": "Efficiency - {{node}}" }
+        { "refId": "A", "expr": "increase(fibre_chunks_used_total{node=~\".*\"}[5m]) / increase(fibre_chunks_received_total{node=~\".*\"}[5m])", "legendFormat": "Efficiency - {{node}}" }
       ],
       "title": "Chunk Efficiency (Used/Received)",
       "type": "timeseries"
