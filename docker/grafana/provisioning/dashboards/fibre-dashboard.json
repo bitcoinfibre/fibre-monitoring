@@ -145,15 +145,15 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 15,
+            "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 6,
             "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
+            "showPoints": "always",
             "spanNulls": false,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
@@ -170,9 +170,9 @@
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.50, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\"$node\"}[5m])) by (le, node))", "legendFormat": "p50 - {{node}}" },
-        { "refId": "B", "expr": "histogram_quantile(0.95, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\"$node\"}[5m])) by (le, node))", "legendFormat": "p95 - {{node}}" },
-        { "refId": "C", "expr": "histogram_quantile(0.99, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\"$node\"}[5m])) by (le, node))", "legendFormat": "p99 - {{node}}" }
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\"$node\"}[$__rate_interval])) by (le, node))", "legendFormat": "p50 - {{node}}" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\"$node\"}[$__rate_interval])) by (le, node))", "legendFormat": "p95 - {{node}}" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\"$node\"}[$__rate_interval])) by (le, node))", "legendFormat": "p99 - {{node}}" }
       ],
       "title": "Block Reconstruction Time",
       "type": "timeseries"
@@ -190,15 +190,15 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 15,
+            "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 6,
             "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
+            "showPoints": "always",
             "spanNulls": false,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
@@ -211,12 +211,12 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
       "id": 13,
       "options": {
-        "legend": { "calcs": ["sum", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "legend": { "calcs": ["mean", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "refId": "A", "expr": "increase(fibre_chunks_used_total{node=~\"$node\"}[5m]) / increase(fibre_blocks_reconstructed_total{node=~\"$node\"}[5m])", "legendFormat": "Used/block - {{node}}" },
-        { "refId": "B", "expr": "increase(fibre_chunks_received_total{node=~\"$node\"}[5m]) / increase(fibre_blocks_reconstructed_total{node=~\"$node\"}[5m])", "legendFormat": "Received/block - {{node}}" }
+        { "refId": "A", "expr": "rate(fibre_block_chunks_used_sum{node=~\"$node\"}[$__rate_interval]) / rate(fibre_block_chunks_used_count{node=~\"$node\"}[$__rate_interval])", "legendFormat": "Avg used/block - {{node}}" },
+        { "refId": "B", "expr": "increase(fibre_chunks_received_total{node=~\"$node\"}[$__rate_interval]) / increase(fibre_blocks_reconstructed_total{node=~\"$node\"}[$__rate_interval])", "legendFormat": "Avg received/block - {{node}}" }
       ],
       "title": "Chunks per Block",
       "type": "timeseries"
@@ -234,15 +234,15 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 15,
+            "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 6,
             "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
+            "showPoints": "always",
             "spanNulls": false,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
@@ -261,7 +261,7 @@
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "refId": "A", "expr": "increase(fibre_chunks_used_total{node=~\"$node\"}[5m]) / increase(fibre_chunks_received_total{node=~\"$node\"}[5m])", "legendFormat": "Efficiency - {{node}}" }
+        { "refId": "A", "expr": "increase(fibre_chunks_used_total{node=~\"$node\"}[$__rate_interval]) / increase(fibre_chunks_received_total{node=~\"$node\"}[$__rate_interval])", "legendFormat": "Efficiency - {{node}}" }
       ],
       "title": "Chunk Efficiency (Used/Received)",
       "type": "timeseries"
