@@ -239,6 +239,33 @@ class FibreMetrics:
         buckets=[1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
     ))
 
+    missing_tx_count: Histogram = field(default_factory=lambda: Histogram(
+        "fibre_block_missing_tx_count",
+        "Number of transactions not locally available before FIBRE reconstruction",
+        ["node"],
+        buckets=[0, 1, 2, 5, 10, 20, 50, 100, 250, 500, 1000, 2000, 5000, 10000],
+    ))
+
+    missing_tx_bytes: Histogram = field(default_factory=lambda: Histogram(
+        "fibre_block_missing_tx_bytes",
+        "Total serialized size of transactions not locally available before FIBRE reconstruction",
+        ["node"],
+        buckets=[100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 2_000_000, 4_000_000],
+    ))
+
+    mempool_tx_count: Histogram = field(default_factory=lambda: Histogram(
+        "fibre_block_mempool_tx_count",
+        "Number of transactions satisfied from the local mempool during FIBRE reconstruction",
+        ["node"],
+        buckets=[0, 1, 10, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000],
+    ))
+
+    all_tx_from_mempool_total: Counter = field(default_factory=lambda: Counter(
+        "fibre_block_all_tx_from_mempool_total",
+        "Total FIBRE-reconstructed blocks whose non-prefilled transactions were all satisfied from the local mempool",
+        ["node"],
+    ))
+
     chunks_received: Counter = field(default_factory=lambda: Counter(
         "fibre_chunks_received_total",
         "Total chunks received",
@@ -343,6 +370,7 @@ enum event_type {
     EVENT_BLOCK_RECONSTRUCTED = 1,
     EVENT_BLOCK_SEND_START = 2,
     EVENT_BLOCK_DELIVERY = 3,
+    EVENT_BLOCK_RECONSTRUCTION_DETAIL = 4,
     EVENT_BLOCK_CONNECTED = 10,
 };
 
@@ -354,6 +382,11 @@ struct event_t {
     s32 height;
     s64 udp_ns;
     s64 cmpct_ns;
+    u32 missing_tx_count;
+    u64 missing_tx_bytes;
+    u32 mempool_tx_count;
+    u32 total_tx_count;
+    u32 all_tx_from_mempool;
     char winner[24];
     char peer[48];
 };
@@ -393,6 +426,22 @@ int trace_block_delivery(struct pt_regs *ctx) {
     u64 peer_ptr;
     bpf_usdt_readarg(4, ctx, &peer_ptr);
     bpf_probe_read_user_str(&event.peer, sizeof(event.peer), (void *)peer_ptr);
+
+    events.perf_submit(ctx, &event, sizeof(event));
+    return 0;
+}
+
+int trace_block_reconstruction_detail(struct pt_regs *ctx) {
+    struct event_t event = {};
+    event.type = EVENT_BLOCK_RECONSTRUCTION_DETAIL;
+
+    // Args: block_hash, height, missing_tx_count, missing_tx_bytes, mempool_tx_count, total_tx_count, all_tx_from_mempool
+    bpf_usdt_readarg(2, ctx, &event.height);
+    bpf_usdt_readarg(3, ctx, &event.missing_tx_count);
+    bpf_usdt_readarg(4, ctx, &event.missing_tx_bytes);
+    bpf_usdt_readarg(5, ctx, &event.mempool_tx_count);
+    bpf_usdt_readarg(6, ctx, &event.total_tx_count);
+    bpf_usdt_readarg(7, ctx, &event.all_tx_from_mempool);
 
     events.perf_submit(ctx, &event, sizeof(event));
     return 0;
@@ -550,6 +599,7 @@ EVENT_TYPE_NAMES: dict[int, str] = {
     1: "block_reconstructed",
     2: "block_send_start",
     3: "block_delivery",
+    4: "block_reconstruction_detail",
     10: "block_connected",
 }
 
@@ -577,6 +627,8 @@ class FibreExporter:
                 self._handle_block_send_start(event)
             elif event.type == 3:  # BLOCK_DELIVERY
                 self._handle_block_delivery(event)
+            elif event.type == 4:  # BLOCK_RECONSTRUCTION_DETAIL
+                self._handle_block_reconstruction_detail(event)
             elif event.type == 10:  # BLOCK_CONNECTED
                 self._handle_block_connected(event)
 
@@ -628,6 +680,27 @@ class FibreExporter:
 
         if self.config.verbose:
             self.logger.info("Block send started")
+
+    def _handle_block_reconstruction_detail(self, event: Any) -> None:
+        """Handle detailed per-block FIBRE reconstruction stats."""
+        node = self.config.node_name
+
+        self.metrics.missing_tx_count.labels(node=node).observe(event.missing_tx_count)
+        self.metrics.missing_tx_bytes.labels(node=node).observe(event.missing_tx_bytes)
+        self.metrics.mempool_tx_count.labels(node=node).observe(event.mempool_tx_count)
+
+        if event.all_tx_from_mempool:
+            self.metrics.all_tx_from_mempool_total.labels(node=node).inc()
+
+        if self.config.verbose:
+            self.logger.info(
+                "Block reconstruction detail: "
+                f"height={event.height} missing_tx_count={event.missing_tx_count} "
+                f"missing_tx_bytes={event.missing_tx_bytes} "
+                f"mempool_tx_count={event.mempool_tx_count} "
+                f"total_tx_count={event.total_tx_count} "
+                f"all_tx_from_mempool={bool(event.all_tx_from_mempool)}"
+            )
 
     def _handle_block_delivery(self, event: Any) -> None:
         """Handle block delivery event — records which peer delivered via which mechanism."""
@@ -685,6 +758,7 @@ class FibreExporter:
             ("block_reconstructed", "trace_block_reconstructed", "udp"),
             ("block_send_start", "trace_block_send_start", "udp"),
             ("block_race_winner", "trace_block_delivery", "udp"),
+            ("block_reconstruction_detail", "trace_block_reconstruction_detail", "udp"),
         ]
         # General block probe (validation provider) — fires for ALL blocks unconditionally
         validation_probes = [
@@ -765,7 +839,7 @@ class FibreExporter:
             sys.exit(1)
 
         self.metrics.exporter_probes_attached.set(attached_count)
-        self.logger.info(f"Attached {attached_count}/4 probes successfully")
+        self.logger.info(f"Attached {attached_count}/5 probes successfully")
 
         # Build TLS context if configured
         ssl_ctx = None

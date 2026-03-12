@@ -56,6 +56,7 @@ The Bitcoin daemon with FIBRE patches and USDT (Userland Statically Defined Trac
 | Tracepoint | Provider | Description |
 |------------|----------|-------------|
 | `block_reconstructed` | udp | Fired when a block is successfully reconstructed via FIBRE/UDP |
+| `block_reconstruction_detail` | udp | Fired when a reconstructed block's missing-transaction and mempool details are available |
 | `block_send_start` | udp | Fired when the node starts sending a block to peers |
 | `block_race_winner` | udp | Fired on block delivery — records mechanism and peer |
 | `block_connected` | validation | Fired when any block is connected to the chain |
@@ -111,6 +112,8 @@ A Python application that captures tracepoint events using eBPF and exposes them
 # FIBRE relay (udp provider probes)
 fibre_blocks_reconstructed_total{node="mynode"} 42
 fibre_block_reconstruction_duration_seconds_bucket{...}
+fibre_block_missing_tx_count_bucket{...}
+fibre_block_missing_tx_bytes_bucket{...}
 fibre_block_deliveries_total{node="mynode",mechanism="fibre_udp",peer="1.2.3.4:8333"} 35
 
 # Block connection (validation provider probe — fires for ALL blocks)
