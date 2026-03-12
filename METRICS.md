@@ -10,11 +10,12 @@ The exporter attaches to USDT (Userland Statically Defined Tracing) probes compi
 bitcoind tracepoint → eBPF program → perf buffer → Python callback → Prometheus metric
 ```
 
-Four of the seven available USDT probes are used:
+Five of the eight available USDT probes are used:
 
 | USDT Probe | Provider | Source File | Description |
 |---|---|---|---|
 | `block_reconstructed` | `udp` | `udprelay.cpp` | Block fully reconstructed from FEC chunks |
+| `block_reconstruction_detail` | `udp` | `udprelay.cpp` | Per-block missing transaction and mempool reconstruction details |
 | `block_send_start` | `udp` | `udprelay.cpp` | Block relay started via UDP |
 | `block_race_winner` | `udp` | `fibrerace.cpp` | Which mechanism (FIBRE/UDP vs compact block) delivered the block first |
 | `block_connected` | `validation` | `validation.cpp` | Block connected to the chain (standard Bitcoin Core probe) |
@@ -30,7 +31,7 @@ All metrics use at least the `node` label, set by `--node-name` at exporter star
 | `node` | All FIBRE and block metrics | User-configured name | Identifies the bitcoind instance |
 | `mechanism` | `fibre_block_deliveries_total` | `fibre_udp`, `bip152_cmpct`, `other` | How the block was delivered |
 | `peer` | `fibre_block_deliveries_total` | IP:port string | Which peer delivered the block |
-| `event_type` | `fibre_exporter_events_processed_total` | `block_reconstructed`, `block_send_start`, `block_delivery`, `block_connected` | Type of BPF event |
+| `event_type` | `fibre_exporter_events_processed_total` | `block_reconstructed`, `block_reconstruction_detail`, `block_send_start`, `block_delivery`, `block_connected` | Type of BPF event |
 | `error_type` | `fibre_exporter_errors_total` | `event_processing` | Category of error |
 
 ## FIBRE Block Relay Metrics
@@ -62,6 +63,41 @@ Time from receiving the first header packet to completing block reconstruction. 
 - **USDT probe:** `udp:block_reconstructed` (argument 3: `chunks_used`)
 
 Number of FEC chunks needed to reconstruct each block. A block is split into chunks for UDP relay; the FEC encoding means you only need a subset to reconstruct. Lower values relative to `chunks_received` indicate good network conditions.
+
+### `fibre_block_missing_tx_count`
+
+- **Type:** Histogram
+- **Labels:** `node`
+- **Buckets:** 0, 1, 2, 5, 10, 20, 50, 100, 250, 500, 1000, 2000, 5000, 10000
+- **USDT probe:** `udp:block_reconstruction_detail` (argument 3: `missing_tx_count`)
+
+Number of non-prefilled block transactions that were not locally available at reconstruction start and therefore had to be recovered from the FIBRE payload rather than the local mempool. Higher values generally indicate less overlap between the node's mempool and the relayed block contents.
+
+### `fibre_block_missing_tx_bytes`
+
+- **Type:** Histogram
+- **Labels:** `node`
+- **Buckets:** 100B, 500B, 1KB, 5KB, 10KB, 50KB, 100KB, 250KB, 500KB, 1MB, 2MB, 4MB
+- **USDT probe:** `udp:block_reconstruction_detail` (argument 4: `missing_tx_bytes`)
+
+Total serialized size of the transactions that were not locally available at reconstruction start. This is often more explanatory than `fibre_block_missing_tx_count`, because a small number of large missing transactions may contribute more to reconstruction work than many tiny ones.
+
+### `fibre_block_mempool_tx_count`
+
+- **Type:** Histogram
+- **Labels:** `node`
+- **Buckets:** 0, 1, 10, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000
+- **USDT probe:** `udp:block_reconstruction_detail` (argument 5: `mempool_tx_count`)
+
+Number of transactions satisfied from the local mempool during FIBRE reconstruction. Higher values indicate better local transaction availability and less dependence on the relayed transaction payload.
+
+### `fibre_block_all_tx_from_mempool_total`
+
+- **Type:** Counter
+- **Labels:** `node`
+- **USDT probe:** `udp:block_reconstruction_detail` (argument 7: `all_tx_from_mempool`)
+
+Incremented when all non-prefilled transactions in a FIBRE-reconstructed block were already available from the local mempool. This is a strong signal that the node's mempool was already well aligned with the block being relayed.
 
 ### `fibre_chunks_used_total`
 
@@ -151,7 +187,7 @@ These are internal metrics about the exporter process itself, not derived from U
 | `fibre_exporter_start_time_seconds` | Gauge | Unix timestamp when the exporter started |
 | `fibre_exporter_events_processed_total` | Counter | Events processed, by `event_type` label |
 | `fibre_exporter_errors_total` | Counter | Errors encountered, by `error_type` label |
-| `fibre_exporter_probes_attached` | Gauge | Number of USDT probes successfully attached (out of 4) |
+| `fibre_exporter_probes_attached` | Gauge | Number of USDT probes successfully attached (out of 5) |
 | `fibre_exporter_info` | Info | Exporter version, node name, and bitcoind path |
 
 ## Example PromQL Queries
@@ -171,6 +207,16 @@ histogram_quantile(0.95, sum(rate(fibre_block_reconstruction_duration_seconds_bu
 **Chunk efficiency:**
 ```promql
 fibre_chunks_used_total / fibre_chunks_received_total
+```
+
+**Average missing transactions per reconstructed block:**
+```promql
+rate(fibre_block_missing_tx_count_sum[1h]) / rate(fibre_block_missing_tx_count_count[1h])
+```
+
+**Average missing transaction bytes per reconstructed block:**
+```promql
+rate(fibre_block_missing_tx_bytes_sum[1h]) / rate(fibre_block_missing_tx_bytes_count[1h])
 ```
 
 **Average transactions per block:**

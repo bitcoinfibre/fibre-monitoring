@@ -137,10 +137,11 @@ Once running, you should see output like:
 2024-01-15 10:30:00 [INFO] fibre_exporter: FIBRE USDT Metrics Exporter v1.2.0
 2024-01-15 10:30:00 [INFO] fibre_exporter: Configuration: bitcoind=/path/to/bitcoind node=mynode port=9435
 2024-01-15 10:30:00 [INFO] fibre_exporter: Attached probe: udp:block_reconstructed
+2024-01-15 10:30:00 [INFO] fibre_exporter: Attached probe: udp:block_reconstruction_detail
 2024-01-15 10:30:00 [INFO] fibre_exporter: Attached probe: udp:block_send_start
 2024-01-15 10:30:00 [INFO] fibre_exporter: Attached probe: udp:block_race_winner
 2024-01-15 10:30:00 [INFO] fibre_exporter: Attached probe: validation:block_connected
-2024-01-15 10:30:00 [INFO] fibre_exporter: Attached 4/4 probes successfully
+2024-01-15 10:30:00 [INFO] fibre_exporter: Attached 5/5 probes successfully
 2024-01-15 10:30:00 [INFO] fibre_exporter: Prometheus metrics: http://0.0.0.0:9435/metrics
 2024-01-15 10:30:00 [INFO] fibre_exporter: Health check: http://0.0.0.0:9436/health
 2024-01-15 10:30:00 [INFO] fibre_exporter: Waiting for FIBRE events...
