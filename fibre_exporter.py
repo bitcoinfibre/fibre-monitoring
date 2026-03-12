@@ -166,57 +166,45 @@ def setup_logging(level: str = "INFO", log_file: Optional[str] = None) -> loggin
 def find_bitcoind_pid(bitcoind_path: str) -> Optional[int]:
     """Find the PID of a running bitcoind process.
 
-    Tries multiple methods to find the PID:
-    1. pgrep with the full path
-    2. pgrep with just the binary name
-    3. pidof with the binary name
+    Resolves the given binary path and matches it against /proc/<pid>/exe
+    for every candidate PID found by pgrep/pidof.  This correctly handles
+    relative vs absolute invocation paths and multiple instances of the
+    same binary name.
 
-    Returns the PID if found, None otherwise.
+    Returns the PID if exactly one match is found, None otherwise.
     """
     binary_name = os.path.basename(bitcoind_path)
+    resolved_target = os.path.realpath(bitcoind_path)
 
-    # Try pgrep with full path first (most specific)
-    try:
-        result = subprocess.run(
-            ["pgrep", "-f", bitcoind_path],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            pids = result.stdout.strip().split('\n')
-            if len(pids) == 1:
-                return int(pids[0])
-            # Multiple PIDs found, try to be more specific
-    except Exception:
-        pass
+    # Gather candidate PIDs from pgrep and pidof
+    candidate_pids: set[int] = set()
+    for cmd in (
+        ["pgrep", "-x", binary_name],
+        ["pidof", binary_name],
+    ):
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0 and result.stdout.strip():
+                for tok in result.stdout.strip().split():
+                    candidate_pids.add(int(tok))
+        except Exception:
+            pass
 
-    # Try pgrep with binary name
-    try:
-        result = subprocess.run(
-            ["pgrep", "-x", binary_name],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            pids = result.stdout.strip().split('\n')
-            if len(pids) == 1:
-                return int(pids[0])
-    except Exception:
-        pass
+    if not candidate_pids:
+        return None
 
-    # Try pidof as fallback
-    try:
-        result = subprocess.run(
-            ["pidof", binary_name],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            pids = result.stdout.strip().split()
-            if len(pids) == 1:
-                return int(pids[0])
-    except Exception:
-        pass
+    # Filter candidates by matching /proc/<pid>/exe to the resolved binary
+    matched: list[int] = []
+    for pid in sorted(candidate_pids):
+        try:
+            proc_exe = os.path.realpath(f"/proc/{pid}/exe")
+            if proc_exe == resolved_target:
+                matched.append(pid)
+        except OSError:
+            continue
+
+    if len(matched) == 1:
+        return matched[0]
 
     return None
 
@@ -279,6 +267,12 @@ class FibreMetrics:
         "fibre_last_block_height",
         "Height of most recently processed block",
         ["node"],
+    ))
+
+    block_reconstructed_event: Gauge = field(default_factory=lambda: Gauge(
+        "fibre_block_reconstructed_event",
+        "Set to 1 for the most recently reconstructed block, labeled with height",
+        ["node", "height"],
     ))
 
     # Block connection metrics (fires for ALL blocks, regardless of delivery path)
@@ -368,10 +362,11 @@ int trace_block_reconstructed(struct pt_regs *ctx) {
     struct event_t event = {};
     event.type = EVENT_BLOCK_RECONSTRUCTED;
 
-    // Args: block_hash, src, chunks_used, chunks_recvd, num_peers, duration_us
+    // Args: block_hash, src, chunks_used, chunks_recvd, num_peers, duration_us, height
     bpf_usdt_readarg(3, ctx, &event.chunks_used);
     bpf_usdt_readarg(4, ctx, &event.chunks_recvd);
     bpf_usdt_readarg(6, ctx, &event.duration_us);
+    bpf_usdt_readarg(7, ctx, &event.height);
 
     events.perf_submit(ctx, &event, sizeof(event));
     return 0;
@@ -593,6 +588,7 @@ class FibreExporter:
         """Handle block reconstructed event."""
         node = self.config.node_name
         duration_sec = event.duration_us / 1_000_000.0
+        height = event.height
 
         self.metrics.blocks_reconstructed.labels(node=node).inc()
         self.metrics.block_reconstruction_time.labels(node=node).observe(duration_sec)
@@ -600,9 +596,29 @@ class FibreExporter:
         self.metrics.chunks_used_total.labels(node=node).inc(event.chunks_used)
         self.metrics.chunks_received.labels(node=node).inc(event.chunks_recvd)
 
+        if height > 0:
+            self.metrics.last_block_height.labels(node=node).set(height)
+            # Cancel any pending reset timer
+            old_timer = getattr(self, '_reconstruction_event_timer', None)
+            if old_timer:
+                old_timer.cancel()
+            # Remove old height label to avoid cardinality growth
+            old = getattr(self, '_last_reconstruction_height', None)
+            if old is not None and old != str(height):
+                self.metrics.block_reconstructed_event.remove(node, old)
+            self.metrics.block_reconstructed_event.labels(node=node, height=str(height)).set(1)
+            self._last_reconstruction_height = str(height)
+            # Reset gauge to 0 after 30s so annotation is transient
+            height_str = str(height)
+            def _reset_event():
+                self.metrics.block_reconstructed_event.labels(node=node, height=height_str).set(0)
+            self._reconstruction_event_timer = threading.Timer(30, _reset_event)
+            self._reconstruction_event_timer.daemon = True
+            self._reconstruction_event_timer.start()
+
         if self.config.verbose:
             self.logger.info(
-                f"Block reconstructed: duration={duration_sec:.3f}s "
+                f"Block reconstructed: height={height} duration={duration_sec:.3f}s "
                 f"chunks_used={event.chunks_used} chunks_recvd={event.chunks_recvd}"
             )
 
@@ -708,7 +724,10 @@ class FibreExporter:
                 self.logger.info(f"Auto-detected bitcoind PID: {detected_pid}")
             else:
                 self.logger.error("Could not auto-detect bitcoind PID")
-                self.logger.error("Please specify --pid manually or ensure bitcoind is running")
+                self.logger.error(
+                    "Possible causes: no bitcoind running, or multiple instances "
+                    "of the same binary (use --pid to select one)"
+                )
                 sys.exit(1)
 
         # Verify binary path matches running process

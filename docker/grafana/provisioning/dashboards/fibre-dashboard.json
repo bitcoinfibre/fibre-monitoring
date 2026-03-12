@@ -9,6 +9,15 @@
         "iconColor": "rgba(0, 211, 255, 1)",
         "name": "Annotations & Alerts",
         "type": "dashboard"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "enable": true,
+        "expr": "fibre_block_reconstructed_event{node=~\"$node\"} == 1",
+        "iconColor": "#FFC000",
+        "name": "Block Arrival",
+        "titleFormat": "Block {{height}} — {{node}}",
+        "step": "15s"
       }
     ]
   },
