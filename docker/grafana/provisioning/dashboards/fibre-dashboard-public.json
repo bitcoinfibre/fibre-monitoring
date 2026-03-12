@@ -128,7 +128,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "A time-series graph showing how long it takes to reconstruct each block from UDP chunks (p50, p95, p99 percentiles). Lower is better. Values under 100ms indicate a healthy FIBRE connection; spikes above 1s suggest packet loss or network issues.",
+      "description": "Rolling reconstruction latency percentiles shown as discrete time-series points. Lower is better. Values under 100ms indicate a healthy FIBRE connection; sparse periods may show gaps because reconstruction is block-driven, not continuous.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -140,15 +140,15 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 15,
+            "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 6,
             "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
+            "showPoints": "always",
             "spanNulls": false,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
@@ -165,16 +165,16 @@
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.50, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\".*\"}[5m])) by (le, node))", "legendFormat": "p50 - {{node}}" },
-        { "refId": "B", "expr": "histogram_quantile(0.95, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\".*\"}[5m])) by (le, node))", "legendFormat": "p95 - {{node}}" },
-        { "refId": "C", "expr": "histogram_quantile(0.99, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\".*\"}[5m])) by (le, node))", "legendFormat": "p99 - {{node}}" }
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\".*\"}[$__rate_interval])) by (le, node))", "legendFormat": "p50 - {{node}}" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\".*\"}[$__rate_interval])) by (le, node))", "legendFormat": "p95 - {{node}}" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum(rate(fibre_block_reconstruction_duration_seconds_bucket{node=~\".*\"}[$__rate_interval])) by (le, node))", "legendFormat": "p99 - {{node}}" }
       ],
       "title": "Block Reconstruction Time",
       "type": "timeseries"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "FIBRE splits each block into small UDP packets called chunks and adds extra chunks using Forward Error Correction (FEC), so the block can be reconstructed even if some packets are lost in transit. This panel plots two lines over time: Received/s (all chunks that arrived, including redundant FEC ones) and Used/s (only the chunks that were actually needed to reconstruct blocks). When a block arrives, both lines spike. If the two lines are close together, the network is clean. If \"received\" is noticeably higher than \"used\", extra FEC chunks are arriving because some packets were lost and needed replacement.",
+      "description": "Per-block chunk averages over Grafana's adaptive query window. \"Avg used/block\" comes from the per-block histogram, while \"Avg received/block\" is total received chunks divided by reconstructed blocks in the same window. Gaps are expected when no blocks were reconstructed.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -186,15 +186,15 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 15,
+            "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 6,
             "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
+            "showPoints": "always",
             "spanNulls": false,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
@@ -207,19 +207,19 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
       "id": 13,
       "options": {
-        "legend": { "calcs": ["sum", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "legend": { "calcs": ["mean", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "refId": "A", "expr": "increase(fibre_chunks_used_total{node=~\".*\"}[5m]) / increase(fibre_blocks_reconstructed_total{node=~\".*\"}[5m])", "legendFormat": "Used/block - {{node}}" },
-        { "refId": "B", "expr": "increase(fibre_chunks_received_total{node=~\".*\"}[5m]) / increase(fibre_blocks_reconstructed_total{node=~\".*\"}[5m])", "legendFormat": "Received/block - {{node}}" }
+        { "refId": "A", "expr": "rate(fibre_block_chunks_used_sum{node=~\".*\"}[$__rate_interval]) / rate(fibre_block_chunks_used_count{node=~\".*\"}[$__rate_interval])", "legendFormat": "Avg used/block - {{node}}" },
+        { "refId": "B", "expr": "increase(fibre_chunks_received_total{node=~\".*\"}[$__rate_interval]) / increase(fibre_blocks_reconstructed_total{node=~\".*\"}[$__rate_interval])", "legendFormat": "Avg received/block - {{node}}" }
       ],
       "title": "Chunks per Block",
       "type": "timeseries"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "This is the ratio of the two Chunk Throughput lines expressed as a single number: used / received. It answers a simple question: out of all the chunks that arrived, what fraction was actually needed? A value of 1.0 (100%) means every chunk that arrived was used — zero waste, zero packet loss. A value of 0.5 (50%) means only half the chunks were useful and the other half were FEC replacements for lost packets. A sustained drop points to network-level packet loss between the FIBRE peers.",
+      "description": "Chunk efficiency over Grafana's adaptive query window. Values near 1.0 mean most received chunks were needed; lower values mean more FEC overhead was consumed. Gaps are expected during windows with no reconstructed blocks.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -231,15 +231,15 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 15,
+            "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 6,
             "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
+            "showPoints": "always",
             "spanNulls": false,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
@@ -258,7 +258,7 @@
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "refId": "A", "expr": "increase(fibre_chunks_used_total{node=~\".*\"}[5m]) / increase(fibre_chunks_received_total{node=~\".*\"}[5m])", "legendFormat": "Efficiency - {{node}}" }
+        { "refId": "A", "expr": "increase(fibre_chunks_used_total{node=~\".*\"}[$__rate_interval]) / increase(fibre_chunks_received_total{node=~\".*\"}[$__rate_interval])", "legendFormat": "Efficiency - {{node}}" }
       ],
       "title": "Chunk Efficiency (Used/Received)",
       "type": "timeseries"
