@@ -30,7 +30,7 @@ from prometheus_client import Counter, Gauge, Histogram, Info, start_http_server
 # Version
 # ============================================================================
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 # ============================================================================
 # Configuration
@@ -613,6 +613,118 @@ class FibreExporter:
         self.metrics = FibreMetrics()
         self.bpf: Optional[BPF] = None
         self._running = False
+        self._pid_explicit = config.pid is not None
+        self._attached_pid: Optional[int] = None
+        self._last_pid_check = 0.0
+
+    def _pid_matches_bitcoind(self, pid: int) -> bool:
+        """Return True when the PID exists and matches the configured binary."""
+        try:
+            proc_exe = os.readlink(f"/proc/{pid}/exe")
+        except OSError:
+            return False
+        return os.path.realpath(self.config.bitcoind_path) == os.path.realpath(proc_exe)
+
+    def _verify_binary_path(self, pid: int) -> None:
+        """Log whether the configured binary path matches the running process."""
+        try:
+            proc_exe = os.readlink(f"/proc/{pid}/exe")
+            if os.path.realpath(self.config.bitcoind_path) != os.path.realpath(proc_exe):
+                self.logger.warning(
+                    f"Binary path mismatch! --bitcoind={self.config.bitcoind_path} "
+                    f"but /proc/{pid}/exe -> {proc_exe}"
+                )
+                self.logger.warning("USDT probes may not fire if attached to the wrong binary")
+            else:
+                self.logger.info(f"Binary path verified: matches /proc/{pid}/exe")
+        except OSError as e:
+            self.logger.warning(f"Could not verify binary path: {e}")
+
+    def _resolve_target_pid(self) -> Optional[int]:
+        """Return the bitcoind PID the exporter should attach to right now."""
+        if self._pid_explicit:
+            return self.config.pid if self.config.pid and self._pid_matches_bitcoind(self.config.pid) else None
+
+        return find_bitcoind_pid(self.config.bitcoind_path)
+
+    def _detach_probes(self) -> None:
+        """Detach current BPF/USDT resources before reattaching."""
+        if self.bpf is not None:
+            try:
+                self.bpf.cleanup()
+            except Exception as e:
+                self.logger.warning(f"Failed to clean up BPF resources: {e}")
+            finally:
+                self.bpf = None
+
+        if hasattr(self, "_usdt"):
+            try:
+                del self._usdt
+            except Exception as e:
+                self.logger.warning(f"Failed to release USDT context: {e}")
+
+    def _reattach_probes(self, pid: int) -> bool:
+        """Attach probes to the given PID, replacing any previous attachment."""
+        old_pid = self._attached_pid
+        if old_pid == pid and self.bpf is not None:
+            return True
+
+        self._detach_probes()
+        self.config.pid = pid
+        self._verify_binary_path(pid)
+
+        attached_count = self._attach_probes()
+        if attached_count == 0:
+            self.metrics.exporter_probes_attached.set(0)
+            self._attached_pid = None
+            return False
+
+        self.metrics.exporter_probes_attached.set(attached_count)
+        self._attached_pid = pid
+        if old_pid is None:
+            self.logger.info(f"Attached {attached_count}/5 probes successfully")
+        else:
+            self.logger.info(
+                f"Reattached {attached_count}/5 probes successfully after PID change "
+                f"{old_pid} -> {pid}"
+            )
+        return True
+
+    def _check_pid_change(self) -> None:
+        """Refresh probe attachments when the target bitcoind PID changes."""
+        now = time.monotonic()
+        if now - self._last_pid_check < 5:
+            return
+        self._last_pid_check = now
+
+        target_pid = self._resolve_target_pid()
+        if target_pid == self._attached_pid:
+            return
+
+        if self._pid_explicit:
+            if target_pid is None and self._attached_pid is not None:
+                self.logger.warning(
+                    f"Configured bitcoind PID {self._attached_pid} is no longer valid; "
+                    "automatic reattach is disabled when --pid/FIBRE_PID is set"
+                )
+                self._detach_probes()
+                self._attached_pid = None
+                self.metrics.exporter_probes_attached.set(0)
+            return
+
+        if target_pid is None:
+            if self._attached_pid is not None:
+                self.logger.warning(
+                    f"Lost attached bitcoind PID {self._attached_pid}; waiting for a new matching process"
+                )
+                self._detach_probes()
+                self._attached_pid = None
+                self.metrics.exporter_probes_attached.set(0)
+            return
+
+        self.logger.info(f"Detected bitcoind PID change: {self._attached_pid} -> {target_pid}")
+        if not self._reattach_probes(target_pid):
+            self.logger.error(f"Failed to attach probes to replacement bitcoind PID {target_pid}")
 
     def _handle_event(self, cpu: int, data: Any, size: int) -> None:
         """Process a single BPF event."""
@@ -792,7 +904,7 @@ class FibreExporter:
         # Auto-detect PID if not provided
         if self.config.pid is None:
             self.logger.info("PID not specified, attempting auto-detection...")
-            detected_pid = find_bitcoind_pid(self.config.bitcoind_path)
+            detected_pid = self._resolve_target_pid()
             if detected_pid:
                 self.config.pid = detected_pid
                 self.logger.info(f"Auto-detected bitcoind PID: {detected_pid}")
@@ -804,20 +916,6 @@ class FibreExporter:
                 )
                 sys.exit(1)
 
-        # Verify binary path matches running process
-        try:
-            proc_exe = os.readlink(f"/proc/{self.config.pid}/exe")
-            if os.path.realpath(self.config.bitcoind_path) != os.path.realpath(proc_exe):
-                self.logger.warning(
-                    f"Binary path mismatch! --bitcoind={self.config.bitcoind_path} "
-                    f"but /proc/{self.config.pid}/exe -> {proc_exe}"
-                )
-                self.logger.warning("USDT probes may not fire if attached to the wrong binary")
-            else:
-                self.logger.info(f"Binary path verified: matches /proc/{self.config.pid}/exe")
-        except OSError as e:
-            self.logger.warning(f"Could not verify binary path: {e}")
-
         # Set exporter info
         self.metrics.exporter_info.info({
             "version": __version__,
@@ -827,9 +925,7 @@ class FibreExporter:
         self.metrics.exporter_start_time.set(time.time())
 
         # Attach probes
-        attached_count = self._attach_probes()
-
-        if attached_count == 0:
+        if not self._reattach_probes(self.config.pid):
             self.metrics.exporter_up.set(0)
             self.logger.error("No USDT probes could be attached")
             self.logger.error("Possible causes:")
@@ -837,9 +933,6 @@ class FibreExporter:
             self.logger.error("  - The specified PID is not a bitcoind process")
             self.logger.error("  - Insufficient permissions (try running with sudo)")
             sys.exit(1)
-
-        self.metrics.exporter_probes_attached.set(attached_count)
-        self.logger.info(f"Attached {attached_count}/5 probes successfully")
 
         # Build TLS context if configured
         ssl_ctx = None
@@ -876,11 +969,16 @@ class FibreExporter:
         self._running = True
         try:
             while self._running:
+                self._check_pid_change()
+                if self.bpf is None:
+                    time.sleep(1)
+                    continue
                 self.bpf.perf_buffer_poll(timeout=1000)
         except KeyboardInterrupt:
             pass
         finally:
             self.metrics.exporter_up.set(0)
+            self._detach_probes()
             self.logger.info("Shutting down...")
 
 
