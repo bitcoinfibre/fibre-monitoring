@@ -1,0 +1,37 @@
+# Slow Block Recorder Configuration
+# Copy this file to slow-block-recorder.yaml and customize as needed.
+
+# Path to bitcoind binary (required)
+bitcoind_path: /usr/local/bin/bitcoind
+
+# PID of running bitcoind (optional, auto-detected if not specified)
+# pid: 12345
+
+# Node name label
+node_name: mynode
+
+# SQLite database path
+db_path: /var/lib/fibre-monitoring/mynode-slow-blocks.sqlite
+
+# Thresholds in milliseconds
+slow_threshold_ms: 50
+very_slow_threshold_ms: 100
+
+# Timeout before a reconstructed block is persisted without detail
+pending_timeout_sec: 60
+
+# Housekeeping interval for timeout checks
+housekeeping_interval_sec: 5
+
+# Alert settings
+alert_enabled: true
+
+# Optional webhook URL for alert delivery
+# alert_webhook_url: https://example.com/fibre-alerts
+
+# Logging
+verbose: false
+log_level: INFO
+
+# Optional file path to log to both stdout and a file
+# log_file: /var/log/fibre-monitoring/slow-block-recorder.log
