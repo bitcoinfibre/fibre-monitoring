@@ -165,6 +165,96 @@ curl -u prometheus:yourpassword http://localhost:9435/metrics
 curl http://localhost:9436/health
 ```
 
+## Running the Slow Block Recorder
+
+`slow_block_recorder.py` is a separate process that listens to the existing FIBRE reconstruction probes, correlates the per-block events, stores them in SQLite, and emits alerts when thresholds are crossed.
+
+It complements the Prometheus exporter:
+
+- Prometheus/Grafana remains the dashboard path
+- SQLite becomes the per-block forensic and alerting path
+
+### 1. Create a Recorder Config
+
+```bash
+cp slow-block-recorder.example.yaml slow-block-recorder.yaml
+```
+
+Edit the file for your node:
+
+```yaml
+bitcoind_path: /usr/local/bin/bitcoind
+pid: 12345
+node_name: node2
+db_path: /var/lib/fibre-monitoring/node2-slow-blocks.sqlite
+slow_threshold_ms: 50
+very_slow_threshold_ms: 100
+alert_enabled: true
+```
+
+If multiple `bitcoind` instances run on the same host, set `pid` explicitly for each recorder instance.
+
+### 2. Start the Recorder
+
+```bash
+sudo .venv/bin/python3 slow_block_recorder.py --config slow-block-recorder.yaml
+```
+
+You can also run it directly with CLI arguments:
+
+```bash
+sudo .venv/bin/python3 slow_block_recorder.py \
+  --bitcoind /usr/local/bin/bitcoind \
+  --pid 12345 \
+  --node-name node2 \
+  --db /var/lib/fibre-monitoring/node2-slow-blocks.sqlite
+```
+
+### 3. Optional Webhook Alerts
+
+Add a webhook URL either in the config file or on the CLI:
+
+```bash
+sudo .venv/bin/python3 slow_block_recorder.py \
+  --config slow-block-recorder.yaml \
+  --alert-webhook-url https://example.com/fibre-alerts
+```
+
+When a block crosses the configured thresholds, the recorder:
+
+- stores the block row in SQLite
+- logs a structured local alert
+- optionally posts the alert JSON to the webhook
+
+### 4. Inspect Recent Slow Blocks
+
+Show the most recent slow or very slow rows:
+
+```bash
+.venv/bin/python3 slow_block_recorder.py \
+  --db /var/lib/fibre-monitoring/node2-slow-blocks.sqlite \
+  --show-last 20 \
+  --show-slow
+```
+
+Show a specific block:
+
+```bash
+.venv/bin/python3 slow_block_recorder.py \
+  --db /var/lib/fibre-monitoring/node2-slow-blocks.sqlite \
+  --show-block 0000000000000000000...
+```
+
+Show slow rows from the last 24 hours:
+
+```bash
+.venv/bin/python3 slow_block_recorder.py \
+  --db /var/lib/fibre-monitoring/node2-slow-blocks.sqlite \
+  --show-slow \
+  --show-last 50 \
+  --since-hours 24
+```
+
 ## Running the Monitoring Stack
 
 ### 1. Configure Environment Variables
@@ -452,6 +542,29 @@ sudo systemctl status fibre-exporter
 sudo journalctl -u fibre-exporter -f
 ```
 
+For the slow block recorder, a systemd template is provided:
+
+```bash
+# Copy the template service
+sudo cp slow-block-recorder@.service /etc/systemd/system/
+
+# Copy one config file per instance
+sudo mkdir -p /etc/fibre-monitoring
+sudo cp slow-block-recorder.example.yaml /etc/fibre-monitoring/slow-block-recorder-node1.yaml
+sudo cp slow-block-recorder.example.yaml /etc/fibre-monitoring/slow-block-recorder-node2.yaml
+
+# Enable one recorder service per config
+sudo systemctl daemon-reload
+sudo systemctl enable slow-block-recorder@node1
+sudo systemctl enable slow-block-recorder@node2
+sudo systemctl start slow-block-recorder@node1
+sudo systemctl start slow-block-recorder@node2
+
+# Check status
+sudo systemctl status slow-block-recorder@node1
+sudo journalctl -u slow-block-recorder@node1 -f
+```
+
 ## Metrics Reference
 
 See **[METRICS.md](METRICS.md)** for the full metrics reference, including USDT probe origins, label values, histogram buckets, and example PromQL queries.
@@ -474,6 +587,9 @@ Quick overview:
 fibre-monitoring/
 ├── fibre_exporter.py              # Main metrics exporter
 ├── fibre-exporter.service         # Systemd service file
+├── slow_block_recorder.py         # SQLite recorder and threshold alerter
+├── slow-block-recorder@.service   # Systemd template for per-instance recorder services
+├── slow-block-recorder.example.yaml # Example recorder configuration
 ├── generate-certs.sh              # TLS certificate generator
 ├── config.example.yaml            # Example configuration file
 ├── README.md                       # This file

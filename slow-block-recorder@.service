@@ -1,0 +1,33 @@
+[Unit]
+Description=FIBRE Slow Block Recorder (%i)
+Documentation=https://github.com/w0xlt/fibre-monitoring
+After=network.target bitcoind.service
+Wants=bitcoind.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+# Path to the recorder - adjust as needed
+WorkingDirectory=/opt/fibre-monitoring
+ExecStart=/opt/fibre-monitoring/.venv/bin/python3 /opt/fibre-monitoring/slow_block_recorder.py \
+    --config /etc/fibre-monitoring/slow-block-recorder-%i.yaml
+
+Restart=on-failure
+RestartSec=10
+
+# Security hardening is limited because eBPF and USDT attachment require elevated privileges.
+NoNewPrivileges=no
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+Environment=PYTHONUNBUFFERED=1
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=slow-block-recorder
+
+[Install]
+WantedBy=multi-user.target
