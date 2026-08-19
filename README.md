@@ -255,6 +255,46 @@ Show slow rows from the last 24 hours:
   --since-hours 24
 ```
 
+## Recording Async Log Queue Telemetry
+
+`async_log_monitor.py` records the asynchronous log writer's queue behavior for
+long-running diagnostics. The high-frequency USDT events are aggregated in BPF
+maps; Python only reads the maps and appends one JSON record per sampling
+interval. It does not stream one userspace event per log line.
+
+Run one monitor per node, with an explicit PID and a distinct output file:
+
+```bash
+sudo .venv/bin/python3 async_log_monitor.py \
+  --bitcoind /path/to/bitcoind \
+  --pid 12345 \
+  --node-name node1 \
+  --output runtime/async-log-node1.jsonl
+
+sudo .venv/bin/python3 async_log_monitor.py \
+  --bitcoind /path/to/bitcoind \
+  --pid 23456 \
+  --node-name node2 \
+  --output runtime/async-log-node2.jsonl
+```
+
+The default interval is 30 seconds. Each line is flushed immediately and the
+file is created mode `0644`, so it can be followed without root:
+
+```bash
+tail -F runtime/async-log-node1.jsonl
+```
+
+Records include queue depth and high-water mark, full-capacity episodes and
+duration, queue-wait and file-operation latency histograms, an outstanding
+operation's age, and internal correlation diagnostics. Counters cover only the
+current monitor session. A new session identifier distinguishes restarts when
+multiple sessions are appended to the same file.
+
+The monitor requires all three `logging:async_file_*` probes. It exits rather
+than silently attaching to another process if the selected PID exits or is
+reused. Stop it with `Ctrl-C` to append a final sample and session-end record.
+
 ## Running the Monitoring Stack
 
 ### 1. Configure Environment Variables
@@ -587,6 +627,7 @@ Quick overview:
 fibre-monitoring/
 ├── fibre_exporter.py              # Main metrics exporter
 ├── fibre-exporter.service         # Systemd service file
+├── async_log_monitor.py           # Async log queue JSONL recorder
 ├── slow_block_recorder.py         # SQLite recorder and threshold alerter
 ├── slow-block-recorder@.service   # Systemd template for per-instance recorder services
 ├── slow-block-recorder.example.yaml # Example recorder configuration
