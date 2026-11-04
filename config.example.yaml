@@ -16,6 +16,11 @@ metrics_port: 9435
 # Health check port (default: 9436)
 health_port: 9436
 
+# Address the metrics and health servers bind to (default: 0.0.0.0, all
+# IPv4 interfaces). Use "::" for all interfaces including IPv6, or one
+# address, e.g. a VPN interface's, to keep the endpoints off the internet.
+listen_address: 0.0.0.0
+
 # Enable verbose logging of individual events (default: false)
 verbose: false
 
