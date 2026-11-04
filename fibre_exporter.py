@@ -11,13 +11,14 @@ import base64
 import hmac
 import logging
 import os
+import socket
 import ssl
 import subprocess
 import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Optional
 
@@ -46,6 +47,8 @@ class ExporterConfig:
     node_name: str = "localhost"
     metrics_port: int = 9435
     health_port: int = 9436
+    # Address both servers bind to
+    listen_address: str = "0.0.0.0"
     verbose: bool = False
     log_level: str = "INFO"
     log_file: Optional[str] = None
@@ -65,6 +68,7 @@ class ExporterConfig:
             node_name=args.node_name,
             metrics_port=args.port,
             health_port=args.health_port,
+            listen_address=args.listen_address,
             verbose=args.verbose,
             log_level=args.log_level,
             log_file=getattr(args, 'log_file', None),
@@ -88,6 +92,7 @@ class ExporterConfig:
             node_name=data.get("node_name", "localhost"),
             metrics_port=data.get("metrics_port", data.get("port", 9435)),
             health_port=data.get("health_port", 9436),
+            listen_address=data.get("listen_address", "0.0.0.0"),
             verbose=data.get("verbose", False),
             log_level=data.get("log_level", "INFO"),
             log_file=data.get("log_file"),
@@ -109,6 +114,7 @@ class ExporterConfig:
             node_name=os.environ.get("FIBRE_NODE_NAME", base_config.node_name),
             metrics_port=int(os.environ.get("FIBRE_METRICS_PORT", base_config.metrics_port)),
             health_port=int(os.environ.get("FIBRE_HEALTH_PORT", base_config.health_port)),
+            listen_address=os.environ.get("FIBRE_LISTEN_ADDRESS", base_config.listen_address),
             verbose=os.environ.get("FIBRE_VERBOSE", str(base_config.verbose)).lower() == "true",
             log_level=os.environ.get("FIBRE_LOG_LEVEL", base_config.log_level),
             log_file=os.environ.get("FIBRE_LOG_FILE", base_config.log_file),
@@ -462,38 +468,131 @@ int trace_block_connected(struct pt_regs *ctx) {
 """
 
 # ============================================================================
-# Health Check Server
+# HTTP Servers
 # ============================================================================
 
+# Seconds a client may take for each read or write, the TLS handshake
+# included, before its connection is dropped.
+CONNECTION_TIMEOUT = 10.0
 
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    """Simple HTTP handler for health checks."""
+# Seconds to wait for the client's close_notify after sending ours.
+TLS_SHUTDOWN_TIMEOUT = 1.0
 
-    def do_GET(self) -> None:
-        if self.path in ("/health", "/ready"):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"OK")
-        else:
-            self.send_response(404)
-            self.send_header("Content-Type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"Not Found")
+
+class ExporterHTTPServer(ThreadingHTTPServer):
+    """HTTP(S) server for the metrics and health endpoints.
+
+    Each connection gets its own thread and a timeout, and TLS is negotiated
+    on that thread rather than in accept(). A client that connects and never
+    finishes the handshake then holds up only its own connection, not every
+    scrape behind it.
+    """
+
+    def __init__(
+        self,
+        address: str,
+        port: int,
+        handler: type[BaseHTTPRequestHandler],
+        ssl_ctx: Optional[ssl.SSLContext] = None,
+        timeout: float = CONNECTION_TIMEOUT,
+    ) -> None:
+        # HTTPServer assumes IPv4; take the family from the address instead.
+        family, _, _, _, sockaddr = socket.getaddrinfo(
+            address, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE
+        )[0]
+        self.address_family = family
+        self.ssl_ctx = ssl_ctx
+        self.connection_timeout = timeout
+        super().__init__(sockaddr, handler)
+
+    def finish_request(self, request: socket.socket, client_address: Any) -> None:
+        """Serve one connection, on its own thread."""
+        request.settimeout(self.connection_timeout)
+        if self.ssl_ctx is None:
+            self.RequestHandlerClass(request, client_address, self)
+            return
+
+        conn = self.ssl_ctx.wrap_socket(request, server_side=True)
+        try:
+            self.RequestHandlerClass(conn, client_address, self)
+        finally:
+            # Send close_notify, so that a client reading to EOF sees a clean
+            # end of the stream rather than a truncated one.
+            conn.settimeout(TLS_SHUTDOWN_TIMEOUT)
+            try:
+                conn.unwrap()
+            except (OSError, ValueError):
+                pass
+            conn.close()
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        # Failed handshakes, plain HTTP sent to a TLS port and timeouts end up
+        # here; the default prints a traceback for each.
+        logging.getLogger("fibre_exporter").debug(
+            "Connection from %s failed: %s", client_address, sys.exc_info()[1]
+        )
+
+
+class ExporterRequestHandler(BaseHTTPRequestHandler):
+    """Base handler: whole responses, no access log."""
+
+    # Send each write at once. With Nagle, the small TLS records of a response
+    # wait for the client's delayed ACK, about 40 ms per request.
+    disable_nagle_algorithm = True
+
+    def _respond(
+        self,
+        status: int,
+        body: bytes,
+        content_type: str = "text/plain",
+        headers: Optional[dict[str, str]] = None,
+    ) -> None:
+        """Send a complete response.
+
+        Content-Length lets the client find the end of the body without
+        waiting for the connection to close.
+        """
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
+        self.end_headers()
+        self.wfile.write(body)
 
     def log_message(self, format: str, *args: Any) -> None:
         # Suppress default logging
         pass
 
 
-def start_health_server(port: int, ssl_ctx: Optional[ssl.SSLContext] = None) -> HTTPServer:
-    """Start health check server in a background thread."""
-    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
-    if ssl_ctx:
-        server.socket = ssl_ctx.wrap_socket(server.socket, server_side=True)
+def _serve_in_background(server: HTTPServer) -> HTTPServer:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server
+
+
+# ============================================================================
+# Health Check Server
+# ============================================================================
+
+
+class HealthCheckHandler(ExporterRequestHandler):
+    """Simple HTTP handler for health checks."""
+
+    def do_GET(self) -> None:
+        if self.path in ("/health", "/ready"):
+            self._respond(200, b"OK")
+        else:
+            self._respond(404, b"Not Found")
+
+
+def start_health_server(
+    port: int,
+    ssl_ctx: Optional[ssl.SSLContext] = None,
+    address: str = "0.0.0.0",
+) -> HTTPServer:
+    """Start health check server in a background thread."""
+    return _serve_in_background(ExporterHTTPServer(address, port, HealthCheckHandler, ssl_ctx))
 
 
 # ============================================================================
@@ -501,7 +600,7 @@ def start_health_server(port: int, ssl_ctx: Optional[ssl.SSLContext] = None) -> 
 # ============================================================================
 
 
-class MetricsHandler(BaseHTTPRequestHandler):
+class MetricsHandler(ExporterRequestHandler):
     """HTTP handler for Prometheus metrics with optional basic auth."""
 
     # These are set by the factory function
@@ -535,11 +634,11 @@ class MetricsHandler(BaseHTTPRequestHandler):
 
     def _send_auth_required(self) -> None:
         """Send 401 Unauthorized response."""
-        self.send_response(401)
-        self.send_header("WWW-Authenticate", 'Basic realm="FIBRE Metrics"')
-        self.send_header("Content-Type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"Unauthorized")
+        self._respond(
+            401,
+            b"Unauthorized",
+            headers={"WWW-Authenticate": 'Basic realm="FIBRE Metrics"'},
+        )
 
     def do_GET(self) -> None:
         if self.path == "/metrics":
@@ -547,19 +646,9 @@ class MetricsHandler(BaseHTTPRequestHandler):
                 self._send_auth_required()
                 return
 
-            self.send_response(200)
-            self.send_header("Content-Type", CONTENT_TYPE_LATEST)
-            self.end_headers()
-            self.wfile.write(generate_latest(REGISTRY))
+            self._respond(200, generate_latest(REGISTRY), CONTENT_TYPE_LATEST)
         else:
-            self.send_response(404)
-            self.send_header("Content-Type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"Not Found")
-
-    def log_message(self, format: str, *args: Any) -> None:
-        # Suppress default logging
-        pass
+            self._respond(404, b"Not Found")
 
 
 def create_metrics_handler(
@@ -580,15 +669,11 @@ def start_metrics_server(
     username: Optional[str] = None,
     password: Optional[str] = None,
     ssl_ctx: Optional[ssl.SSLContext] = None,
+    address: str = "0.0.0.0",
 ) -> HTTPServer:
     """Start metrics server with optional basic auth in a background thread."""
     handler_class = create_metrics_handler(username, password)
-    server = HTTPServer(("0.0.0.0", port), handler_class)
-    if ssl_ctx:
-        server.socket = ssl_ctx.wrap_socket(server.socket, server_side=True)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    return server
+    return _serve_in_background(ExporterHTTPServer(address, port, handler_class, ssl_ctx))
 
 
 # ============================================================================
@@ -944,25 +1029,28 @@ class FibreExporter:
             self.logger.info("TLS: disabled")
 
         # Start servers
+        address = self.config.listen_address
         if self.config.has_metrics_auth() or ssl_ctx:
             start_metrics_server(
                 self.config.metrics_port,
                 self.config.metrics_auth_username,
                 self.config.metrics_auth_password,
                 ssl_ctx,
+                address,
             )
             if self.config.has_metrics_auth():
                 self.logger.info("Metrics endpoint basic auth: enabled")
         else:
-            start_http_server(self.config.metrics_port)
+            start_http_server(self.config.metrics_port, addr=address)
             self.logger.info("Metrics endpoint basic auth: disabled")
 
-        start_health_server(self.config.health_port, ssl_ctx)
+        start_health_server(self.config.health_port, ssl_ctx, address)
         self.metrics.exporter_up.set(1)
 
         scheme = "https" if ssl_ctx else "http"
-        self.logger.info(f"Prometheus metrics: {scheme}://0.0.0.0:{self.config.metrics_port}/metrics")
-        self.logger.info(f"Health check: {scheme}://0.0.0.0:{self.config.health_port}/health")
+        host = f"[{address}]" if ":" in address else address
+        self.logger.info(f"Prometheus metrics: {scheme}://{host}:{self.config.metrics_port}/metrics")
+        self.logger.info(f"Health check: {scheme}://{host}:{self.config.health_port}/health")
         self.logger.info("Waiting for FIBRE events...")
 
         # Poll for events
@@ -1048,6 +1136,11 @@ Examples:
         help="Health check port (default: 9436)",
     )
     parser.add_argument(
+        "--listen-address",
+        default="0.0.0.0",
+        help="Address the metrics and health servers bind to (default: 0.0.0.0)",
+    )
+    parser.add_argument(
         "--config", "-c",
         type=Path,
         help="Path to YAML config file",
@@ -1116,6 +1209,8 @@ def main() -> None:
         config.metrics_port = args.port
     if args.health_port != 9436:
         config.health_port = args.health_port
+    if args.listen_address != "0.0.0.0":
+        config.listen_address = args.listen_address
     if args.verbose:
         config.verbose = args.verbose
     if args.log_level != "INFO":

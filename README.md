@@ -66,6 +66,7 @@ sudo .venv/bin/python3 fibre_exporter.py \
 | `--node-name`, `-n` | No | localhost | Label for this node in metrics |
 | `--port` | No | 9435 | Prometheus metrics port |
 | `--health-port` | No | 9436 | Health check endpoint port |
+| `--listen-address` | No | 0.0.0.0 | Address the metrics and health servers bind to; `::` for IPv6, or one interface's address to keep them off the internet |
 | `--config`, `-c` | No | - | Path to YAML config file |
 | `--verbose`, `-v` | No | false | Log individual events |
 | `--log-level` | No | INFO | Log level (DEBUG, INFO, WARNING, ERROR) |
@@ -94,6 +95,7 @@ bitcoind_path: /usr/local/bin/bitcoind
 node_name: mynode
 metrics_port: 9435
 health_port: 9436
+listen_address: 0.0.0.0
 verbose: false
 log_level: INFO
 
@@ -117,6 +119,7 @@ All settings can also be configured via environment variables:
 | `FIBRE_NODE_NAME` | Node name label |
 | `FIBRE_METRICS_PORT` | Prometheus metrics port |
 | `FIBRE_HEALTH_PORT` | Health check port |
+| `FIBRE_LISTEN_ADDRESS` | Address the metrics and health servers bind to |
 | `FIBRE_VERBOSE` | Enable verbose logging (true/false) |
 | `FIBRE_LOG_LEVEL` | Log level (DEBUG, INFO, WARNING, ERROR) |
 | `FIBRE_METRICS_AUTH_USERNAME` | Basic auth username for /metrics endpoint |
