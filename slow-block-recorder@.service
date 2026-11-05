@@ -1,6 +1,6 @@
 [Unit]
 Description=FIBRE Slow Block Recorder (%i)
-Documentation=https://github.com/w0xlt/fibre-monitoring
+Documentation=https://github.com/bitcoinfibre/fibre-monitoring
 After=network.target bitcoind.service
 Wants=bitcoind.service
 
