@@ -568,6 +568,31 @@ sudo systemctl status slow-block-recorder@node1
 sudo journalctl -u slow-block-recorder@node1 -f
 ```
 
+## Running on NixOS
+
+`flake.nix` provides the exporter as a package and as a NixOS module for nodes
+run by the `services.fibre` module of
+[fibre-nix](https://github.com/bitcoinfibre/fibre-nix). The exporter attaches to
+that node's bitcoind, restarts with it and follows its PID:
+
+```nix
+# flake.nix
+inputs.fibre-monitoring = {
+  url = "github:bitcoinfibre/fibre-monitoring";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
+
+# the host's configuration, next to services.fibre
+imports = [ fibre-monitoring.nixosModules.fibre-exporter ];
+services.fibre-exporter = {
+  enable = true;
+  # FIBRE_METRICS_AUTH_* and FIBRE_TLS_*, kept outside the Nix store
+  # (e.g. rendered by sops-nix)
+  environmentFile = "/run/secrets/fibre-exporter.env";
+  openFirewall = true;
+};
+```
+
 ## Metrics Reference
 
 See **[METRICS.md](METRICS.md)** for the full metrics reference, including USDT probe origins, label values, histogram buckets, and example PromQL queries.
@@ -595,6 +620,8 @@ fibre-monitoring/
 ├── slow-block-recorder.example.yaml # Example recorder configuration
 ├── generate-certs.sh              # TLS certificate generator
 ├── config.example.yaml            # Example configuration file
+├── flake.nix                      # Nix package and NixOS module
+├── nix/                           # Their definitions
 ├── README.md                       # This file
 ├── METRICS.md                      # Detailed metrics reference
 ├── ARCHITECTURE.md                 # Architecture documentation
