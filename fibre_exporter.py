@@ -26,6 +26,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from bcc import BPF, USDT
 from prometheus_client import Counter, Gauge, Histogram, Info, start_http_server, REGISTRY
+from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily
 
 # ============================================================================
 # Version
@@ -361,6 +362,124 @@ class FibreMetrics:
         "fibre_exporter",
         "Information about the FIBRE exporter",
     ))
+
+
+# ============================================================================
+# UDP Loss Counters
+# ============================================================================
+
+# Fields of the Udp lines in /proc/net/snmp, with Udp6<field> in /proc/net/snmp6.
+HOST_UDP_COUNTERS = {
+    "InDatagrams": ("fibre_host_udp_in_datagrams", "UDP datagrams delivered to sockets"),
+    "OutDatagrams": ("fibre_host_udp_out_datagrams", "UDP datagrams sent"),
+    "InErrors": ("fibre_host_udp_in_errors", "Received UDP datagrams dropped, receive buffer overflows included"),
+    "RcvbufErrors": ("fibre_host_udp_receive_buffer_errors", "Received UDP datagrams dropped because the socket's receive buffer was full"),
+    "SndbufErrors": ("fibre_host_udp_send_buffer_errors", "UDP sends refused because the socket's send buffer was full"),
+}
+
+
+def read_host_udp_counters() -> dict[str, dict[str, int]]:
+    """Return {ip version: {field: value}} for the host's UDP counters."""
+    counters: dict[str, dict[str, int]] = {}
+    try:
+        with open("/proc/net/snmp") as f:
+            udp = [line.split()[1:] for line in f if line.startswith("Udp:")]
+        if len(udp) == 2:
+            counters["4"] = {k: int(v) for k, v in zip(*udp)}
+    except (OSError, ValueError):
+        pass
+    try:
+        with open("/proc/net/snmp6") as f:
+            pairs = (line.split() for line in f if line.startswith("Udp6"))
+            counters["6"] = {k[len("Udp6"):]: int(v) for k, v in pairs}
+    except (OSError, ValueError):
+        pass
+    return counters
+
+
+def read_process_udp_sockets(pid: int) -> list[dict[str, Any]]:
+    """Return the UDP sockets the process holds, with their queues and drops."""
+    inodes = set()
+    try:
+        for fd in os.listdir(f"/proc/{pid}/fd"):
+            try:
+                target = os.readlink(f"/proc/{pid}/fd/{fd}")
+            except OSError:
+                continue
+            if target.startswith("socket:["):
+                inodes.add(target[len("socket:["):-1])
+    except OSError:
+        return []
+
+    sockets = []
+    for path, ip in (("/proc/net/udp", "4"), ("/proc/net/udp6", "6")):
+        try:
+            with open(path) as f:
+                next(f)  # header
+                for line in f:
+                    # sl local rem st tx_queue:rx_queue tr retrnsmt uid timeout inode ref pointer drops
+                    fields = line.split()
+                    if len(fields) < 13 or fields[9] not in inodes:
+                        continue
+                    tx_queue, rx_queue = (int(q, 16) for q in fields[4].split(":"))
+                    sockets.append({
+                        "ip": ip,
+                        "port": str(int(fields[1].rsplit(":", 1)[1], 16)),
+                        "send_queue": tx_queue,
+                        "receive_queue": rx_queue,
+                        "drops": int(fields[12]),
+                    })
+        except (OSError, ValueError, StopIteration):
+            continue
+    return sockets
+
+
+class UdpStatsCollector:
+    """UDP loss counters, read from the kernel on every scrape.
+
+    Host-wide counters cover every UDP socket on the machine; the socket
+    metrics cover only bitcoind's, found through its open file descriptors.
+    """
+
+    def __init__(self, node: str, pid: Any) -> None:
+        self.node = node
+        self.pid = pid  # callable returning the attached bitcoind PID or None
+
+    def collect(self) -> Any:
+        host = read_host_udp_counters()
+        for field_name, (name, doc) in HOST_UDP_COUNTERS.items():
+            family = CounterMetricFamily(name, doc, labels=["node", "ip"])
+            for ip, values in host.items():
+                if field_name in values:
+                    family.add_metric([self.node, ip], values[field_name])
+            yield family
+
+        pid = self.pid()
+        sockets = read_process_udp_sockets(pid) if pid else []
+        labels = ["node", "ip", "port"]
+        drops = CounterMetricFamily(
+            "fibre_udp_socket_receive_drops",
+            "Datagrams dropped on arrival at one of bitcoind's UDP sockets",
+            labels=labels,
+        )
+        send_queue = GaugeMetricFamily(
+            "fibre_udp_socket_send_queue_bytes",
+            "Bytes waiting in one of bitcoind's UDP send buffers",
+            labels=labels,
+        )
+        receive_queue = GaugeMetricFamily(
+            "fibre_udp_socket_receive_queue_bytes",
+            "Bytes waiting in one of bitcoind's UDP receive buffers",
+            labels=labels,
+        )
+        for s in sockets:
+            key = [self.node, s["ip"], s["port"]]
+            drops.add_metric(key, s["drops"])
+            send_queue.add_metric(key, s["send_queue"])
+            receive_queue.add_metric(key, s["receive_queue"])
+        yield drops
+        yield send_queue
+        yield receive_queue
 
 
 # ============================================================================
@@ -701,6 +820,7 @@ class FibreExporter:
         self._pid_explicit = config.pid is not None
         self._attached_pid: Optional[int] = None
         self._last_pid_check = 0.0
+        REGISTRY.register(UdpStatsCollector(config.node_name, lambda: self._attached_pid))
 
     def _pid_matches_bitcoind(self, pid: int) -> bool:
         """Return True when the PID exists and matches the configured binary."""

@@ -177,6 +177,52 @@ Time to connect a block to the chain (UTXO set updates, script validation). This
 
 Number of transactions in each connected block. Correlates with `bitcoin_block_connection_duration_seconds` — blocks with more transactions take longer to validate.
 
+## UDP Loss Metrics
+
+FIBRE sends blocks as UDP datagrams, which have no flow control: when a sender writes faster than its link carries, or a receiver reads slower than packets arrive, the kernel drops packets and counts why. These metrics are read from the kernel on every scrape, not from USDT probes, so they work without BPF.
+
+### `fibre_host_udp_send_buffer_errors_total`
+
+- **Type:** Counter
+- **Labels:** `node`, `ip` (`4` or `6`)
+- **Source:** `SndbufErrors` in `/proc/net/snmp` (`Udp6SndbufErrors` in `/proc/net/snmp6`)
+
+Sends refused because a socket's send buffer was full; FIBRE drops the chunk. bitcoind 32.x logs each with `-debug=udpnet` (`UDP: send failed: Resource temporarily unavailable (11)`); 31.x doesn't log them, so this counter is their only record. A few during a block come from the sender's writer thread waking late and catching up in a burst; a steady rate means the configured UDP bandwidth (`-udpport=<port>,<group>,<bw>`) is above what the link carries.
+
+### `fibre_host_udp_receive_buffer_errors_total`
+
+- **Type:** Counter
+- **Labels:** `node`, `ip`
+- **Source:** `RcvbufErrors` in `/proc/net/snmp` (`Udp6RcvbufErrors`)
+
+Arriving datagrams dropped because a socket's receive buffer was full: the reader fell behind. The sender is not told.
+
+### `fibre_host_udp_in_errors_total`, `fibre_host_udp_in_datagrams_total`, `fibre_host_udp_out_datagrams_total`
+
+- **Type:** Counter
+- **Labels:** `node`, `ip`
+- **Source:** `InErrors`, `InDatagrams`, `OutDatagrams`
+
+All receive errors (receive buffer overflows included), and datagrams delivered and sent. Comparing one node's sent with its peer's delivered shows loss on the path between them.
+
+The host counters cover every UDP socket on the machine, DNS and NTP included. On a dedicated FIBRE host, FIBRE is nearly all of it; the socket metrics below are bitcoind's alone.
+
+### `fibre_udp_socket_receive_drops_total`
+
+- **Type:** Counter
+- **Labels:** `node`, `ip`, `port`
+- **Source:** the `drops` column of `/proc/net/udp` and `/proc/net/udp6`, for the sockets bitcoind holds
+
+Datagrams dropped on arrival at one of bitcoind's UDP sockets. It restarts from zero with bitcoind, since the sockets are new.
+
+### `fibre_udp_socket_send_queue_bytes`, `fibre_udp_socket_receive_queue_bytes`
+
+- **Type:** Gauge
+- **Labels:** `node`, `ip`, `port`
+- **Source:** the `tx_queue` and `rx_queue` columns of `/proc/net/udp` and `/proc/net/udp6`
+
+Bytes waiting in the socket's send or receive buffer at the moment of the scrape. Normally near zero; a buffer that stays near full shows where packets are queuing.
+
 ## Exporter Self-Monitoring Metrics
 
 These are internal metrics about the exporter process itself, not derived from USDT probes.
@@ -227,4 +273,14 @@ rate(bitcoin_block_tx_count_sum[1h]) / rate(bitcoin_block_tx_count_count[1h])
 **Blocks per hour by delivery mechanism:**
 ```promql
 sum by (mechanism) (increase(fibre_block_deliveries_total[1h]))
+```
+
+**UDP sends refused per second, by node** — non-zero means the configured UDP bandwidth is too high for the link:
+```promql
+sum by (node) (rate(fibre_host_udp_send_buffer_errors_total[5m]))
+```
+
+**Datagrams dropped at bitcoind's sockets per second, by node:**
+```promql
+sum by (node) (rate(fibre_udp_socket_receive_drops_total[5m]))
 ```
