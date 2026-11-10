@@ -27,6 +27,12 @@
       checks.${system} = {
         inherit (self.packages.${system}) fibre-exporter;
 
+        metric-names = pkgs.runCommand "fibre-metric-names" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+          python3 ${./nix/tests/metric_names.py} ${./fibre_exporter.py} \
+            ${./alerts}/*.yml ${./docker/grafana/provisioning/dashboards}/*.json
+          touch $out
+        '';
+
         collector-rules = pkgs.runCommand "fibre-collector-rules" { nativeBuildInputs = [ pkgs.prometheus.cli ]; } ''
           cd ${./alerts}
           promtool check rules fibre.rules.yml

@@ -654,9 +654,10 @@ To use an Alertmanager running elsewhere, set
 rules are still evaluated and shown in Prometheus and Grafana, but nobody is
 notified, and the build warns about it.
 
-`nix flake check` tests the alert rules with promtool, and runs the collector
-in a VM against a stand-in exporter, sending every dashboard query through
-Grafana.
+`nix flake check` runs the exporter's import check and tests the alert rules
+with promtool. It also checks that every metric the dashboards and alert rules
+name is one the exporter defines, and runs the collector in a VM against a
+stand-in exporter, sending every dashboard query through Grafana.
 
 ## Metrics Reference
 

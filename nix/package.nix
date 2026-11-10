@@ -36,6 +36,16 @@ stdenvNoCC.mkDerivation {
     runHook postInstall
   '';
 
+  # Starting it imports everything it needs, so a missing module or Python
+  # dependency fails here rather than on a node. --version stops before it
+  # touches BPF or bitcoind.
+  doInstallCheck = true;
+  installCheckPhase = ''
+    runHook preInstallCheck
+    $out/bin/fibre-exporter --version
+    runHook postInstallCheck
+  '';
+
   meta = {
     description = "Prometheus exporter for FIBRE's USDT probes";
     homepage = "https://github.com/bitcoinfibre/fibre-monitoring";
