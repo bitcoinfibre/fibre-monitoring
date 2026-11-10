@@ -595,6 +595,69 @@ services.fibre-exporter = {
 };
 ```
 
+The monitoring host runs the collector instead of the Docker setup: Prometheus
+scrapes the exporters and evaluates the alert rules in `alerts/`, and Grafana
+serves the dashboards in `docker/grafana`. It verifies each exporter's
+certificate against the CA from `generate-certs.sh`, so each target must use a
+name or address its certificate holds:
+
+```nix
+imports = [ fibre-monitoring.nixosModules.fibre-collector ];
+services.fibre-collector = {
+  enable = true;
+  # node name = "host:port"; the name becomes the `node` label
+  targets = {
+    node1 = "10.0.0.1:9435";
+    node2 = "10.0.0.2:9435";
+  };
+  # runtime files, readable by the prometheus or grafana user
+  passwordFile = "/run/secrets/fibre-collector/scrape-password";
+  tls.caFile = "/etc/fibre-collector/ca.crt";
+  grafana = {
+    adminPasswordFile = "/run/secrets/fibre-collector/grafana-admin";
+    secretKeyFile = "/run/secrets/fibre-collector/grafana-secret-key";
+  };
+};
+```
+
+Prometheus answers only on the host itself, and Grafana on `127.0.0.1:3000`
+unless `grafana.address` and `grafana.openFirewall` say otherwise. Grafana
+installs no plugins and contacts nothing outside: Nix pins it.
+
+Where alerts go is up to you, through NixOS's own Alertmanager module: enable
+it on the same host and the collector sends it every firing alert. Any
+receiver Alertmanager supports works, and most read their secret from a file.
+For example, Telegram:
+
+```nix
+services.prometheus.alertmanager = {
+  enable = true;
+  configuration = {
+    route.receiver = "operators";
+    receivers = [
+      {
+        name = "operators";
+        telegram_configs = [
+          {
+            bot_token_file = "/run/secrets/alertmanager/telegram-token";
+            chat_id = 123456789;
+          }
+        ];
+      }
+    ];
+  };
+};
+```
+
+To use an Alertmanager running elsewhere, set
+`services.fibre-collector.alertmanagers = [ "host:9093" ]`. Without any, the
+rules are still evaluated and shown in Prometheus and Grafana, but nobody is
+notified, and the build warns about it.
+
+`nix flake check` tests the alert rules with promtool, and runs the collector
+in a VM against a stand-in exporter, sending every dashboard query through
+Grafana.
+
 ## Metrics Reference
 
 See **[METRICS.md](METRICS.md)** for the full metrics reference, including USDT probe origins, label values, histogram buckets, and example PromQL queries.
@@ -622,8 +685,9 @@ fibre-monitoring/
 ├── slow-block-recorder.example.yaml # Example recorder configuration
 ├── generate-certs.sh              # TLS certificate generator
 ├── config.example.yaml            # Example configuration file
-├── flake.nix                      # Nix package and NixOS module
-├── nix/                           # Their definitions
+├── flake.nix                      # Nix package and NixOS modules
+├── nix/                           # Their definitions and the collector's VM test
+├── alerts/                        # Prometheus alert rules and their tests
 ├── README.md                       # This file
 ├── METRICS.md                      # Detailed metrics reference
 ├── ARCHITECTURE.md                 # Architecture documentation
