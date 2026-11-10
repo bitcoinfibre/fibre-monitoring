@@ -815,6 +815,26 @@ class FibreExporter:
         self.config = config
         self.logger = setup_logging(config.log_level, config.log_file)
         self.metrics = FibreMetrics()
+        # Counters and histograms labelled only by node exist from the start
+        # at 0, so a node with no events yet shows 0 rather than no data, and
+        # rate() and increase() see the first event after a restart. For a
+        # histogram that covers its _count, _sum and every bucket.
+        for metric in (
+            self.metrics.blocks_reconstructed,
+            self.metrics.blocks_sent,
+            self.metrics.blocks_connected,
+            self.metrics.chunks_received,
+            self.metrics.chunks_used_total,
+            self.metrics.all_tx_from_mempool_total,
+            self.metrics.block_reconstruction_time,
+            self.metrics.chunks_used,
+            self.metrics.missing_tx_count,
+            self.metrics.missing_tx_bytes,
+            self.metrics.mempool_tx_count,
+            self.metrics.block_connection_time,
+            self.metrics.block_tx_count,
+        ):
+            metric.labels(node=config.node_name)
         self.bpf: Optional[BPF] = None
         self._running = False
         self._pid_explicit = config.pid is not None
