@@ -1,0 +1,49 @@
+# Unit tests for fibre.rules.yml: promtool test rules fibre.rules.test.yml
+rule_files:
+  - fibre.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      # a: unreachable from minute 1 on. b: down for 3 minutes, as in a
+      # deploy that restarts the node, then back.
+      - series: 'up{job="fibre", node="a"}'
+        values: '1 0x10'
+      - series: 'up{job="fibre", node="b"}'
+        values: '1 0 0 0 1x7'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: FibreExporterDown
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: FibreExporterDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: fibre
+              node: a
+            exp_annotations:
+              summary: "FIBRE exporter on a can't be scraped"
+
+  - interval: 1m
+    input_series:
+      # a: loses two probes from minute 1 on. b: reattaches after 2 minutes.
+      - series: 'fibre_exporter_probes_attached{job="fibre", node="a"}'
+        values: '5 3x10'
+      - series: 'fibre_exporter_probes_attached{job="fibre", node="b"}'
+        values: '5 0 0 5x8'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: FibreProbesDetached
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: FibreProbesDetached
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: fibre
+              node: a
+            exp_annotations:
+              summary: "FIBRE exporter on a traces 3 of 5 probes"

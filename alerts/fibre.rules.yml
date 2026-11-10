@@ -1,0 +1,40 @@
+# Alert rules for FIBRE exporters, for any Prometheus that scrapes them as
+# job "fibre" with a "node" label per target. The NixOS collector module
+# (nix/collector.nix) loads this file; with Docker, mount it into the
+# Prometheus container and list it under rule_files.
+# fibre.rules.test.yml tests the rules: promtool test rules fibre.rules.test.yml
+groups:
+  - name: fibre
+    rules:
+      # The collector can't scrape the node's exporter: the exporter or the
+      # node is down, or the network or the scrape password is wrong. The
+      # exporter restarts with bitcoind, so a deploy that restarts the node
+      # shows a short gap; `for` rides that out.
+      - alert: FibreExporterDown
+        expr: up{job="fibre"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "FIBRE exporter on {{ $labels.node }} can't be scraped"
+
+      # The exporter runs but traces less than all of bitcoind's FIBRE
+      # probes, e.g. while waiting for a restarted bitcoind, so relay metrics
+      # are missing or partial.
+      - alert: FibreProbesDetached
+        expr: fibre_exporter_probes_attached{job="fibre"} < 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "FIBRE exporter on {{ $labels.node }} traces {{ $value }} of 5 probes"
+
+      # TODO: the UDP loss rules. Thresholds are a judgement call; see
+      # METRICS.md "UDP Loss Metrics" and the mainnet VM test (2026-11-05).
+      #
+      # - FibreUdpSendBufferErrors: sends refused per block sent, from
+      #   fibre_host_udp_send_buffer_errors_total and fibre_blocks_sent_total.
+      #   A few per block come from late writer wakeups; a steady rate means
+      #   the node's UDP bandwidth is above what its link carries.
+      # - FibreUdpSocketDrops: datagrams dropped at bitcoind's UDP sockets,
+      #   from fibre_udp_socket_receive_drops_total. The reader fell behind.
