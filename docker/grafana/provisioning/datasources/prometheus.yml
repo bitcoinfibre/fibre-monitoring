@@ -13,6 +13,8 @@ datasources:
     editable: true
     jsonData:
       httpMethod: POST
-      timeInterval: "15s"
+      # The exporters' scrape interval (see prometheus.yml). Grafana sizes the
+      # window of a rate from it, so a per-block chart draws each block once.
+      timeInterval: "10s"
     uid: prometheus
     orgId: 1

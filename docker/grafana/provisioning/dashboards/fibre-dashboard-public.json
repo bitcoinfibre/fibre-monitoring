@@ -142,7 +142,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "One row per monitored node. Status is whether the collector has reached the node's exporter in the last 30 seconds. Behind is how many blocks the node's last seen height trails the chain tip. The other columns cover the selected time range. Rebuilt counts the blocks the node assembled from FIBRE/UDP chunks. Win rate is, of the blocks FIBRE/UDP and compact blocks raced to deliver to the node, the share FIBRE/UDP delivered; a block the node heard first over TCP, before any FIBRE peer had it, is not a race, and a node with no races shows a dash. Mean time is the node's mean time from the first UDP packet to the decoded block. A node that is down shows no figures.",
+      "description": "One row per monitored node. Status is whether the collector has reached the node's exporter in the last 30 seconds. Behind is how many blocks the node's last seen height trails the chain tip. The other columns cover the selected time range. Rebuilt counts the blocks the node assembled from FIBRE/UDP chunks. Win rate is, of the blocks FIBRE/UDP and compact blocks raced to deliver to the node, the share FIBRE/UDP delivered; a block the node heard first over TCP, before any FIBRE peer had it, is not a race, and a node with no races shows a dash. Mean time is the node's mean time from the first UDP packet to the decoded block. Duplicate chunks is the share of the chunks the node received that it did not use, almost always because it already had them, from another peer or filled in from its own mempool; it is not packet loss. A node that is down shows no figures.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "fixed", "fixedColor": "text" },
@@ -151,7 +151,7 @@
             "cellOptions": { "type": "auto" },
             "filterable": false,
             "inspect": false,
-            "minWidth": 64
+            "minWidth": 60
           },
           "mappings": [],
           "noValue": "–",
@@ -164,7 +164,7 @@
               { "id": "mappings", "value": [{ "type": "value", "options": { "0": { "color": "red", "index": 0, "text": "● Down" }, "1": { "color": "green", "index": 1, "text": "● Up" } } }] },
               { "id": "custom.cellOptions", "value": { "type": "color-text" } },
               { "id": "custom.align", "value": "left" },
-              { "id": "custom.width", "value": 84 }
+              { "id": "custom.width", "value": 80 }
             ]
           },
           {
@@ -188,19 +188,27 @@
             "properties": [
               { "id": "unit", "value": "percentunit" },
               { "id": "decimals", "value": 0 },
-              { "id": "custom.minWidth", "value": 72 }
+              { "id": "custom.minWidth", "value": 68 }
             ]
           },
           {
             "matcher": { "id": "byName", "options": "Mean time" },
             "properties": [
               { "id": "unit", "value": "s" },
-              { "id": "custom.minWidth", "value": 84 }
+              { "id": "custom.minWidth", "value": 80 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Duplicate chunks" },
+            "properties": [
+              { "id": "unit", "value": "percentunit" },
+              { "id": "decimals", "value": 1 },
+              { "id": "custom.width", "value": 138 }
             ]
           }
         ]
       },
-      "gridPos": { "h": 9, "w": 15, "x": 0, "y": 9 },
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 9 },
       "id": 25,
       "options": {
         "cellHeight": "sm",
@@ -211,9 +219,10 @@
       "targets": [
         { "refId": "A", "expr": "max by (node) (max_over_time(up{job=\"fibre\"}[30s]))", "format": "table", "instant": true, "range": false },
         { "refId": "B", "expr": "scalar(max(fibre_last_block_height)) - max by (node) (fibre_last_block_height)", "format": "table", "instant": true, "range": false },
-        { "refId": "C", "expr": "round(sum by (node) (increase(fibre_blocks_reconstructed_total[$__range])))", "format": "table", "instant": true, "range": false },
-        { "refId": "D", "expr": "sum by (node) (increase(fibre_block_reconstruction_duration_seconds_sum[$__range])) / (sum by (node) (increase(fibre_block_reconstruction_duration_seconds_count[$__range])) > 0)", "format": "table", "instant": true, "range": false },
-        { "refId": "E", "expr": "sum by (node) (increase(fibre_block_races_total{outcome=\"fibre_won\"}[$__range])) / (sum by (node) (increase(fibre_block_races_total{outcome=~\"fibre_won|fibre_lost\"}[$__range])) > 0)", "format": "table", "instant": true, "range": false }
+        { "refId": "C", "expr": "count by (node) (max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) or on (node) (max by (node) (max_over_time(up{job=\"fibre\"}[30s])) == 1) * 0", "format": "table", "instant": true, "range": false },
+        { "refId": "D", "expr": "avg by (node) (max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range))", "format": "table", "instant": true, "range": false },
+        { "refId": "E", "expr": "sum by (node) (increase(fibre_block_races_total{outcome=\"fibre_won\"}[$__range])) / (sum by (node) (increase(fibre_block_races_total{outcome=~\"fibre_won|fibre_lost\"}[$__range])) > 0)", "format": "table", "instant": true, "range": false },
+        { "refId": "F", "expr": "1 - sum by (node) (increase(fibre_chunks_used_total[$__range])) / (sum by (node) (increase(fibre_chunks_received_total[$__range])) > 0)", "format": "table", "instant": true, "range": false }
       ],
       "title": "Node Status",
       "transformations": [
@@ -222,8 +231,8 @@
           "id": "organize",
           "options": {
             "excludeByName": { "Time": true },
-            "indexByName": { "node": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #E": 4, "Value #D": 5 },
-            "renameByName": { "node": "Node", "Value #A": "Status", "Value #B": "Behind", "Value #C": "Rebuilt", "Value #E": "Win rate", "Value #D": "Mean time" }
+            "indexByName": { "node": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #E": 4, "Value #D": 5, "Value #F": 6 },
+            "renameByName": { "node": "Node", "Value #A": "Status", "Value #B": "Behind", "Value #C": "Rebuilt", "Value #E": "Win rate", "Value #D": "Mean time", "Value #F": "Duplicate chunks" }
           }
         }
       ],
@@ -247,7 +256,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 9, "x": 15, "y": 9 },
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 9 },
       "id": 26,
       "options": {
         "alignValue": "left",
@@ -273,7 +282,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Time from the first UDP packet of a block to the block being fully decoded. Each dot is one block on one node; two blocks less than about a minute apart on the same node share a dot at their average. Lower is better. The time includes waiting for chunks to arrive, so it rises when the node's mempool is missing more of the block: compare with Missing Transaction Bytes per Block beside it.",
+      "description": "Time from the first UDP packet of a block to the block being fully decoded. Each dot is one block on one node; hover over it to see which block. Lower is better. The scale is logarithmic, so each labelled step is ten times slower, and the dashed lines mark 25, 50, 100 and 250 ms, the edges of the bands in Reconstruction Time Distribution. Two blocks less than about a minute apart on the same node share a dot at their average, and its block number shows as a dash. The time includes waiting for chunks to arrive, so it rises when the node's mempool is missing more of the block: compare with Missing Transactions per Block beside it.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -283,7 +292,6 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
-            "axisSoftMin": 0,
             "barAlignment": 0,
             "drawStyle": "points",
             "fillOpacity": 0,
@@ -293,17 +301,38 @@
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 8,
-            "scaleDistribution": { "type": "linear" },
+            "scaleDistribution": { "type": "log", "log": 10 },
             "showPoints": "always",
             "spanNulls": false,
             "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
+            "thresholdsStyle": { "mode": "dashed" }
           },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "transparent", "value": null }, { "color": "rgba(128, 128, 128, 0.5)", "value": 0.025 }, { "color": "rgba(128, 128, 128, 0.5)", "value": 0.05 }, { "color": "rgba(128, 128, 128, 0.5)", "value": 0.1 }, { "color": "rgba(128, 128, 128, 0.5)", "value": 0.25 }] },
           "unit": "s"
         },
         "overrides": [
+          {
+            "matcher": { "id": "byType", "options": "number" },
+            "properties": [
+              { "id": "custom.axisGridShow", "value": false }
+            ]
+          },
+          {
+            "matcher": { "id": "byFrameRefID", "options": "H" },
+            "properties": [
+              { "id": "unit", "value": "none" },
+              { "id": "mappings", "value": [{ "type": "range", "options": { "from": null, "to": -1, "result": { "index": 0, "text": "–" } } }] },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "text" } },
+              { "id": "custom.axisPlacement", "value": "hidden" },
+              { "id": "custom.hideFrom", "value": { "legend": true, "tooltip": false, "viz": false } },
+              { "id": "custom.drawStyle", "value": "line" },
+              { "id": "custom.lineWidth", "value": 0 },
+              { "id": "custom.showPoints", "value": "never" },
+              { "id": "custom.scaleDistribution", "value": { "type": "linear" } },
+              { "id": "custom.thresholdsStyle", "value": { "mode": "off" } }
+            ]
+          },
           {
             "matcher": { "id": "byValue", "options": { "reducer": "allIsNull" } },
             "properties": [
@@ -320,14 +349,15 @@
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "refId": "A", "expr": "sum by (node) (rate(fibre_block_reconstruction_duration_seconds_sum[$__rate_interval])) / sum by (node) (rate(fibre_block_reconstruction_duration_seconds_count[$__rate_interval])) or on (node) (max by (node) (up{job=\"fibre\"}) * NaN)", "legendFormat": "{{node}}" }
+        { "refId": "A", "expr": "avg by (node) ((fibre_recent_block_reconstruction_seconds unless fibre_recent_block_reconstruction_seconds offset $__interval) and on (node) ((up{job=\"fibre\"} offset $__interval == 1) or on (node) (time() - fibre_exporter_start_time_seconds < $__interval_ms / 1000 + 300))) or on (node) (max by (node) (up{job=\"fibre\"}) * NaN)", "legendFormat": "{{node}}" },
+        { "refId": "H", "expr": "(max by (node) (fibre_last_reconstructed_block_height) and on (node) (count by (node) ((fibre_recent_block_reconstruction_seconds unless fibre_recent_block_reconstruction_seconds offset $__interval) and on (node) ((up{job=\"fibre\"} offset $__interval == 1) or on (node) (time() - fibre_exporter_start_time_seconds < $__interval_ms / 1000 + 300))) == 1)) or on (node) (count by (node) ((fibre_recent_block_reconstruction_seconds unless fibre_recent_block_reconstruction_seconds offset $__interval) and on (node) ((up{job=\"fibre\"} offset $__interval == 1) or on (node) (time() - fibre_exporter_start_time_seconds < $__interval_ms / 1000 + 300))) * 0 - 1)", "legendFormat": "{{node}} block" }
       ],
       "title": "Reconstruction Time per Block",
       "type": "timeseries"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "The transactions of a block that a node did not already have in its mempool and had to receive as FIBRE chunks. Each dot is one block on one node, placed by the serialized bytes that were missing; hover over a dot to also see how many transactions that was. Two blocks less than about a minute apart on the same node share a dot at their average. More missing bytes mean more chunks to wait for, and a longer reconstruction.",
+      "description": "The transactions of a block that a node did not already have in its mempool and had to receive as FIBRE chunks. Each dot is one block on one node, placed by the serialized bytes that were missing; hover over a dot to also see how many transactions that was and which block it is. Two blocks less than about a minute apart on the same node share a dot at their average, and its block number shows as a dash. More missing bytes mean more chunks to wait for, and a longer reconstruction.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -371,6 +401,21 @@
             ]
           },
           {
+            "matcher": { "id": "byFrameRefID", "options": "H" },
+            "properties": [
+              { "id": "unit", "value": "none" },
+              { "id": "mappings", "value": [{ "type": "range", "options": { "from": null, "to": -1, "result": { "index": 0, "text": "–" } } }] },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "text" } },
+              { "id": "custom.axisPlacement", "value": "hidden" },
+              { "id": "custom.hideFrom", "value": { "legend": true, "tooltip": false, "viz": false } },
+              { "id": "custom.drawStyle", "value": "line" },
+              { "id": "custom.lineWidth", "value": 0 },
+              { "id": "custom.showPoints", "value": "never" },
+              { "id": "custom.scaleDistribution", "value": { "type": "linear" } },
+              { "id": "custom.thresholdsStyle", "value": { "mode": "off" } }
+            ]
+          },
+          {
             "matcher": { "id": "byValue", "options": { "reducer": "allIsNull" } },
             "properties": [
               { "id": "custom.hideFrom", "value": { "legend": true, "tooltip": true, "viz": true } }
@@ -387,7 +432,8 @@
       },
       "targets": [
         { "refId": "A", "expr": "sum by (node) (rate(fibre_block_missing_tx_bytes_sum[$__rate_interval])) / sum by (node) (rate(fibre_block_missing_tx_bytes_count[$__rate_interval])) or on (node) (max by (node) (up{job=\"fibre\"}) * NaN)", "legendFormat": "{{node}}" },
-        { "refId": "B", "expr": "rate(fibre_block_missing_tx_count_sum{node=~\".*\"}[$__rate_interval]) / rate(fibre_block_missing_tx_count_count{node=~\".*\"}[$__rate_interval])", "legendFormat": "{{node}} transactions" }
+        { "refId": "B", "expr": "rate(fibre_block_missing_tx_count_sum{node=~\".*\"}[$__rate_interval]) / rate(fibre_block_missing_tx_count_count{node=~\".*\"}[$__rate_interval])", "legendFormat": "{{node}} transactions" },
+        { "refId": "H", "expr": "(max by (node) (fibre_last_reconstructed_block_height) and on (node) (count by (node) ((fibre_recent_block_reconstruction_seconds unless fibre_recent_block_reconstruction_seconds offset $__interval) and on (node) ((up{job=\"fibre\"} offset $__interval == 1) or on (node) (time() - fibre_exporter_start_time_seconds < $__interval_ms / 1000 + 300))) == 1) and on (node) (sum by (node) (rate(fibre_block_missing_tx_bytes_count[$__rate_interval])) > 0)) or on (node) ((sum by (node) (rate(fibre_block_missing_tx_bytes_count[$__rate_interval])) > 0) * 0 - 1)", "legendFormat": "{{node}} block" }
       ],
       "title": "Missing Transactions per Block",
       "type": "timeseries"
@@ -404,7 +450,7 @@
           "unit": "none"
         }
       },
-      "gridPos": { "h": 8, "w": 7, "x": 0, "y": 27 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
       "id": 27,
       "options": {
         "displayMode": "basic",
@@ -420,70 +466,14 @@
         "valueMode": "text"
       },
       "targets": [
-        { "refId": "A", "expr": "count(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) < 0.025) or vector(0)", "legendFormat": "under 25 ms", "instant": true, "range": false },
-        { "refId": "B", "expr": "count(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.025 < 0.05) or vector(0)", "legendFormat": "25 to 50 ms", "instant": true, "range": false },
-        { "refId": "C", "expr": "count(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.05 < 0.1) or vector(0)", "legendFormat": "50 to 100 ms", "instant": true, "range": false },
-        { "refId": "D", "expr": "count(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.1 < 0.25) or vector(0)", "legendFormat": "100 to 250 ms", "instant": true, "range": false },
-        { "refId": "E", "expr": "count(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.25) or vector(0)", "legendFormat": "over 250 ms", "instant": true, "range": false }
+        { "refId": "A", "expr": "count((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) < 0.025) or vector(0)", "legendFormat": "under 25 ms", "instant": true, "range": false },
+        { "refId": "B", "expr": "count((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) >= 0.025 < 0.05) or vector(0)", "legendFormat": "25 to 50 ms", "instant": true, "range": false },
+        { "refId": "C", "expr": "count((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) >= 0.05 < 0.1) or vector(0)", "legendFormat": "50 to 100 ms", "instant": true, "range": false },
+        { "refId": "D", "expr": "count((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) >= 0.1 < 0.25) or vector(0)", "legendFormat": "100 to 250 ms", "instant": true, "range": false },
+        { "refId": "E", "expr": "count((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) >= 0.25) or vector(0)", "legendFormat": "over 250 ms", "instant": true, "range": false }
       ],
       "title": "Reconstruction Time Distribution",
       "type": "bargauge"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Share of the chunks a node received for a block that it did not need. These are mostly chunks it already had, from another peer or filled in from its own mempool, so a node fed by several peers normally shows more of them. Each dot is one block on one node. This is not packet loss: a lost packet never arrives to be counted, and a chunk that replaces it counts as needed.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "axisSoftMax": 0.1,
-            "axisSoftMin": 0,
-            "barAlignment": 0,
-            "drawStyle": "points",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 8,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "always",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "min": 0,
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] },
-          "unit": "percentunit"
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byValue", "options": { "reducer": "allIsNull" } },
-            "properties": [
-              { "id": "custom.hideFrom", "value": { "legend": true, "tooltip": true, "viz": true } }
-            ]
-          }
-        ]
-      },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 27 },
-      "id": 16,
-      "interval": "1m",
-      "options": {
-        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        { "refId": "A", "expr": "1 - sum by (node) (increase(fibre_chunks_used_total[$__rate_interval])) / sum by (node) (increase(fibre_chunks_received_total[$__rate_interval])) or on (node) (max by (node) (up{job=\"fibre\"}) * NaN)", "legendFormat": "{{node}}" }
-      ],
-      "title": "Unneeded Chunks per Block",
-      "type": "timeseries"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -530,7 +520,7 @@
           }
         ]
       },
-      "gridPos": { "h": 8, "w": 9, "x": 7, "y": 27 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
       "id": 28,
       "options": {
         "cellHeight": "sm",
@@ -539,7 +529,7 @@
         "sortBy": [{ "desc": true, "displayName": "Block" }]
       },
       "targets": [
-        { "refId": "A", "expr": "label_replace(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) < 0.025, \"band\", \"under 25 ms\", \"\", \"\") or label_replace(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.025 < 0.05, \"band\", \"25 to 50 ms\", \"\", \"\") or label_replace(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.05 < 0.1, \"band\", \"50 to 100 ms\", \"\", \"\") or label_replace(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.1 < 0.25, \"band\", \"100 to 250 ms\", \"\", \"\") or label_replace(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.25, \"band\", \"over 250 ms\", \"\", \"\")", "legendFormat": "__auto", "instant": true, "range": false }
+        { "refId": "A", "expr": "label_replace((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) < 0.025, \"band\", \"under 25 ms\", \"\", \"\") or label_replace((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) >= 0.025 < 0.05, \"band\", \"25 to 50 ms\", \"\", \"\") or label_replace((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) >= 0.05 < 0.1, \"band\", \"50 to 100 ms\", \"\", \"\") or label_replace((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) >= 0.1 < 0.25, \"band\", \"100 to 250 ms\", \"\", \"\") or label_replace((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) >= 0.25, \"band\", \"over 250 ms\", \"\", \"\")", "legendFormat": "__auto", "instant": true, "range": false }
       ],
       "title": "Recent Blocks",
       "transformations": [

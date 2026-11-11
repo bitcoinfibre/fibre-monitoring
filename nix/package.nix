@@ -43,6 +43,18 @@ stdenvNoCC.mkDerivation {
   installCheckPhase = ''
     runHook preInstallCheck
     $out/bin/fibre-exporter --version
+    # A scrape reads the metrics in the order FibreMetrics declares them, and
+    # a block's series must be read before the height that names it.
+    ${python.interpreter} - "$out/libexec" <<'EOF'
+    import sys
+    sys.path.insert(0, sys.argv[1])
+    from prometheus_client import REGISTRY, generate_latest
+    import fibre_exporter
+    fibre_exporter.FibreMetrics()
+    order = [line.split()[2] for line in generate_latest(REGISTRY).decode().splitlines() if line.startswith("# TYPE ")]
+    block, height = "fibre_recent_block_reconstruction_seconds", "fibre_last_reconstructed_block_height"
+    assert order.index(block) < order.index(height), f"{height} is scraped before {block}"
+    EOF
     runHook postInstallCheck
   '';
 

@@ -40,6 +40,21 @@
           touch $out
         '';
 
+        dashboard-queries =
+          pkgs.runCommand "fibre-dashboard-queries"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.prometheus.cli
+              ];
+            }
+            ''
+              python3 ${./nix/tests/dashboard_queries.py} ${./docker/grafana/provisioning/dashboards} \
+                ${./nix/tests/dashboard-queries.test.yml} dashboard-queries.test.yml
+              promtool test rules dashboard-queries.test.yml
+              touch $out
+            '';
+
         collector-vm = import ./nix/tests/collector.nix {
           inherit pkgs;
           module = self.nixosModules.fibre-collector;

@@ -116,7 +116,7 @@ Running total of all chunks used across all block reconstructions. Compare with 
 - **Labels:** `node`
 - **USDT probe:** `udp:block_reconstructed` (argument 4: `chunks_recvd`)
 
-Running total of all chunks received while a block was still being collected. A received chunk goes unused when the node already had it, from another peer or filled in from its own mempool, or when it arrived out of order; `1 - fibre_chunks_used_total / fibre_chunks_received_total` is that unneeded share. It is not a measure of packet loss: a lost packet never arrives to be counted, an FEC chunk that replaces it counts as used, and chunks arriving after the block is complete are not counted.
+Running total of all chunks received while a block was still being collected. A received chunk goes unused when the node already had it, from another peer or filled in from its own mempool, or when it arrived out of order; `1 - fibre_chunks_used_total / fibre_chunks_received_total` is that unused share, which the public dashboard shows per node as Duplicate chunks. It is not a measure of packet loss: a lost packet never arrives to be counted, an FEC chunk that replaces it counts as used, and chunks arriving after the block is complete are not counted.
 
 ### `fibre_blocks_sent_total`
 
@@ -166,7 +166,15 @@ All three series exist at 0 from the exporter's start. The win rate is `fibre_wo
 - **Labels:** `node`, `height`
 - **USDT probe:** `udp:block_reconstructed` (argument 6: `duration_us`, argument 7: `height`)
 
-The exact reconstruction time of each of the node's 16 most recently reconstructed blocks, one series per block. Older blocks lose their series so the exporter's series count stays bounded, while Prometheus keeps their history: `last_over_time(fibre_recent_block_reconstruction_seconds[6h])` lists every block reconstructed in the last six hours with its time. Each block adds one series to Prometheus per node, about 144 a day.
+The exact reconstruction time of each of the node's 16 most recently reconstructed blocks, one series per block. Older blocks lose their series so the exporter's series count stays bounded, while Prometheus keeps their history. A block's series lasts for as long as it is among the node's last 16, about two and a half hours, so the series seen in a time window also include up to 16 blocks per node from before it: to list only the blocks reconstructed inside the window, leave out the series that were already there when it began (see the example queries). Each block adds one series to Prometheus per node, about 144 a day.
+
+### `fibre_last_reconstructed_block_height`
+
+- **Type:** Gauge
+- **Labels:** `node`
+- **USDT probe:** `udp:block_reconstructed` (argument 7: `height`)
+
+The height of the block the node most recently reconstructed from FIBRE/UDP chunks. The series does not exist until the node has reconstructed a block. Unlike `fibre_last_block_height` it does not move for a block that arrived another way, so at the moment a new `fibre_recent_block_reconstruction_seconds` series appears it is that block's height as a number. The public dashboard uses it to name the block behind each dot of its per-block charts.
 
 ### `fibre_last_block_height`
 
@@ -274,9 +282,11 @@ sum(increase(fibre_block_races_total{outcome="fibre_won"}[1h]))
 sum(increase(fibre_block_races_total{outcome=~"fibre_won|fibre_lost"}[1h]))
 ```
 
-**Blocks reconstructed in the last six hours, with each one's time:**
+**Blocks reconstructed in the last six hours, with each one's time** — every series seen in the window, less those already there when it began:
 ```promql
-last_over_time(fibre_recent_block_reconstruction_seconds[6h])
+max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[6h]))
+unless
+max by (node, height) (fibre_recent_block_reconstruction_seconds offset 6h)
 ```
 
 **p95 reconstruction time over the last hour:**

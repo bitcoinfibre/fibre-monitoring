@@ -316,6 +316,15 @@ class FibreMetrics:
         ["node", "height"],
     ))
 
+    # Declared after recent_block_reconstruction on purpose: a scrape reads
+    # the metrics in the order they are declared here, and
+    # _handle_block_reconstructed sets this before adding the block's series.
+    last_reconstructed_block_height: Gauge = field(default_factory=lambda: Gauge(
+        "fibre_last_reconstructed_block_height",
+        "Height of the block the node most recently reconstructed from FIBRE/UDP chunks",
+        ["node"],
+    ))
+
     block_races: Counter = field(default_factory=lambda: Counter(
         "fibre_block_races_total",
         "Blocks by how the race between FIBRE/UDP and compact blocks ended",
@@ -1087,6 +1096,11 @@ class FibreExporter:
 
         if height > 0:
             self.metrics.last_block_height.labels(node=node).set(height)
+            # A chart reads this as the height of a newly listed block, so a
+            # scrape must not see the new block with the old height. A scrape
+            # reads the block's series before this one (see FibreMetrics), so
+            # setting this first means one that sees the block sees its height.
+            self.metrics.last_reconstructed_block_height.labels(node=node).set(height)
             # One series per recent block, so a table can list each block's
             # exact time. Drop the oldest once RECENT_BLOCKS are held.
             self.metrics.recent_block_reconstruction.labels(node=node, height=str(height)).set(duration_sec)

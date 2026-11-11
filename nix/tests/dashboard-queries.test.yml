@@ -1,0 +1,137 @@
+# The public dashboard's per-block charts, run by promtool on scraped series.
+# dashboard_queries.py replaces each @[<file> | <panel> | <refId>] with that
+# query, in parentheses, before promtool runs. The panels step by a minute,
+# so a dot at T stands for the blocks whose series first appear after T-1m.
+#
+# A chart's query also gives every scraped node a NaN series, so the node
+# keeps its colour; "> -Inf" drops it, since promtool can't compare NaN. An
+# empty result after it means no dot.
+#
+# Every scenario scrapes one node every 10s from 0s to 190s. Series:
+#   up                                          1 when the scrape succeeded
+#   fibre_recent_block_reconstruction_seconds   one per recent block (height)
+#   fibre_last_reconstructed_block_height       the block's number for hover
+#   fibre_exporter_start_time_seconds           when the exporter started
+#   fibre_block_missing_tx_bytes_count          one observation per block
+# A failed scrape marks every series of the target stale ("stale" below).
+
+evaluation_interval: 10s
+tests:
+  # Block 101 is first scraped at 70s; block 100 is older.
+  - name: a new block is drawn once, at the first step after it
+    interval: 10s
+    input_series:
+      - series: 'up{job="fibre",node="n"}'
+        values: '1+0x19'
+      - series: 'fibre_recent_block_reconstruction_seconds{job="fibre",node="n",height="100"}'
+        values: '0.25+0x19'
+      - series: 'fibre_recent_block_reconstruction_seconds{job="fibre",node="n",height="101"}'
+        values: '_ _ _ _ _ _ _ 0.04+0x12'
+      - series: 'fibre_last_reconstructed_block_height{job="fibre",node="n"}'
+        values: '100+0x6 101+0x12'
+      - series: 'fibre_exporter_start_time_seconds{job="fibre",node="n"}'
+        values: '-1000+0x19'
+      - series: 'fibre_block_missing_tx_bytes_count{job="fibre",node="n"}'
+        values: '2+0x6 3+0x12'
+    promql_expr_test:
+      - expr: '@[fibre-dashboard-public.json | Reconstruction Time per Block | A] > -Inf'
+        eval_time: 60s
+        exp_samples: []
+      - expr: '@[fibre-dashboard-public.json | Reconstruction Time per Block | A] > -Inf'
+        eval_time: 120s
+        exp_samples:
+          - labels: '{node="n"}'
+            value: 0.04
+      - expr: '@[fibre-dashboard-public.json | Reconstruction Time per Block | A] > -Inf'
+        eval_time: 180s
+        exp_samples: []
+      - expr: '@[fibre-dashboard-public.json | Reconstruction Time per Block | H]'
+        eval_time: 120s
+        exp_samples:
+          - labels: '{node="n"}'
+            value: 101
+      - expr: '@[fibre-dashboard-public.json | Reconstruction Time per Block | H]'
+        eval_time: 180s
+        exp_samples: []
+      - expr: '@[fibre-dashboard-public.json | Missing Transactions per Block | H]'
+        eval_time: 120s
+        exp_samples:
+          - labels: '{node="n"}'
+            value: 101
+      - expr: '@[fibre-dashboard-public.json | Missing Transactions per Block | H]'
+        eval_time: 180s
+        exp_samples: []
+
+  # The scrape at 60s fails while the exporter keeps running. At 70s the
+  # node's records are scraped again and look new against 60s, but block
+  # 100 is old: no dot and no block number.
+  - name: one failed scrape draws no block
+    interval: 10s
+    input_series:
+      - series: 'up{job="fibre",node="n"}'
+        values: '1+0x5 0 1+0x12'
+      - series: 'fibre_recent_block_reconstruction_seconds{job="fibre",node="n",height="100"}'
+        values: '0.25+0x5 stale 0.25+0x12'
+      - series: 'fibre_last_reconstructed_block_height{job="fibre",node="n"}'
+        values: '100+0x5 stale 100+0x12'
+      - series: 'fibre_exporter_start_time_seconds{job="fibre",node="n"}'
+        values: '-1000+0x5 stale -1000+0x12'
+    promql_expr_test:
+      - expr: '@[fibre-dashboard-public.json | Reconstruction Time per Block | A] > -Inf'
+        eval_time: 120s
+        exp_samples: []
+      - expr: '@[fibre-dashboard-public.json | Reconstruction Time per Block | H]'
+        eval_time: 120s
+        exp_samples: []
+
+  # As above, but block 101 is reconstructed while the scrape at 60s fails.
+  # Its record can't be told from the old ones that reappear with it, so it
+  # is left out rather than averaged with them.
+  - name: a block that arrives during a failed scrape is not mixed with old ones
+    interval: 10s
+    input_series:
+      - series: 'up{job="fibre",node="n"}'
+        values: '1+0x5 0 1+0x12'
+      - series: 'fibre_recent_block_reconstruction_seconds{job="fibre",node="n",height="100"}'
+        values: '0.25+0x5 stale 0.25+0x12'
+      - series: 'fibre_recent_block_reconstruction_seconds{job="fibre",node="n",height="101"}'
+        values: '_ _ _ _ _ _ _ 0.04+0x12'
+      - series: 'fibre_last_reconstructed_block_height{job="fibre",node="n"}'
+        values: '100+0x5 stale 101+0x12'
+      - series: 'fibre_exporter_start_time_seconds{job="fibre",node="n"}'
+        values: '-1000+0x5 stale -1000+0x12'
+    promql_expr_test:
+      - expr: '@[fibre-dashboard-public.json | Reconstruction Time per Block | A] > -Inf'
+        eval_time: 120s
+        exp_samples: []
+      - expr: '@[fibre-dashboard-public.json | Reconstruction Time per Block | H]'
+        eval_time: 120s
+        exp_samples: []
+
+  # The exporter is down for the scrape at 60s, starts at 65s and
+  # reconstructs block 102 at 68s, before its first scrape. It holds only
+  # blocks from after its start, so they are all drawn.
+  - name: a block from before a restarted exporter's first scrape is drawn
+    interval: 10s
+    input_series:
+      - series: 'up{job="fibre",node="n"}'
+        values: '1+0x5 0 1+0x12'
+      - series: 'fibre_recent_block_reconstruction_seconds{job="fibre",node="n",height="101"}'
+        values: '0.04+0x5 stale'
+      - series: 'fibre_recent_block_reconstruction_seconds{job="fibre",node="n",height="102"}'
+        values: '_ _ _ _ _ _ _ 0.03+0x12'
+      - series: 'fibre_last_reconstructed_block_height{job="fibre",node="n"}'
+        values: '101+0x5 stale 102+0x12'
+      - series: 'fibre_exporter_start_time_seconds{job="fibre",node="n"}'
+        values: '-1000+0x5 stale 65+0x12'
+    promql_expr_test:
+      - expr: '@[fibre-dashboard-public.json | Reconstruction Time per Block | A] > -Inf'
+        eval_time: 120s
+        exp_samples:
+          - labels: '{node="n"}'
+            value: 0.03
+      - expr: '@[fibre-dashboard-public.json | Reconstruction Time per Block | H]'
+        eval_time: 120s
+        exp_samples:
+          - labels: '{node="n"}'
+            value: 102

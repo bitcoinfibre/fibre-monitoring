@@ -675,6 +675,7 @@ Quick overview:
 | `bitcoin_blocks_connected_total` | Counter | All blocks connected to the chain (any delivery path) |
 | `bitcoin_block_connection_duration_seconds` | Histogram | Block validation time |
 | `fibre_last_block_height` | Gauge | Height of most recently processed block |
+| `fibre_last_reconstructed_block_height` | Gauge | Height of the block most recently reconstructed via FIBRE/UDP |
 
 ## File Structure
 

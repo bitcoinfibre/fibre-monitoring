@@ -276,7 +276,10 @@ in
             isDefault = true;
             jsonData = {
               httpMethod = "POST";
-              timeInterval = "15s";
+              # How often the exporters are scraped. Grafana sizes the
+              # window of a rate from it, so a per-block chart draws each
+              # block once: a wider window can show one block twice.
+              timeInterval = cfg.scrapeInterval;
             };
           }
         ];
