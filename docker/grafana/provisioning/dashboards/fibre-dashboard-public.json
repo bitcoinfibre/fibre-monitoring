@@ -142,7 +142,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "One row per monitored node. Status is whether the collector has reached the node's exporter in the last 30 seconds. Behind is how many blocks the node's last seen height trails the chain tip. The other columns cover the selected time range. Rebuilt counts the blocks the node assembled from FIBRE/UDP chunks. Win rate is, of the blocks FIBRE/UDP and compact blocks raced to deliver to the node, the share FIBRE/UDP delivered; a block the node heard first over TCP, before any FIBRE peer had it, is not a race, and a node with no races shows a dash. Mean time is the node's mean time from the first UDP packet to the decoded block. Duplicate chunks is the share of the chunks the node received that it did not use, almost always because it already had them, from another peer or filled in from its own mempool; it is not packet loss. A node that is down shows no figures.",
+      "description": "One row per monitored node. Status is whether the collector has reached the node's exporter in the last 30 seconds. The other columns cover the selected time range. Rebuilt counts the blocks the node assembled from FIBRE/UDP chunks. Mean time is the node's mean time from the first UDP packet to the decoded block. Duplicate chunks is the share of the chunks the node received that it did not use, almost always because it already had them, from another peer or filled in from its own mempool; it is not packet loss. A node that is down shows no figures.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "fixed", "fixedColor": "text" },
@@ -164,16 +164,7 @@
               { "id": "mappings", "value": [{ "type": "value", "options": { "0": { "color": "red", "index": 0, "text": "● Down" }, "1": { "color": "green", "index": 1, "text": "● Up" } } }] },
               { "id": "custom.cellOptions", "value": { "type": "color-text" } },
               { "id": "custom.align", "value": "left" },
-              { "id": "custom.width", "value": 80 }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "Behind" },
-            "properties": [
-              { "id": "unit", "value": "none" },
-              { "id": "color", "value": { "mode": "thresholds" } },
-              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "text", "value": null }, { "color": "orange", "value": 2 }, { "color": "red", "value": 6 }] } },
-              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+              { "id": "custom.width", "value": 74 }
             ]
           },
           {
@@ -181,14 +172,6 @@
             "properties": [
               { "id": "unit", "value": "none" },
               { "id": "decimals", "value": 0 }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "Win rate" },
-            "properties": [
-              { "id": "unit", "value": "percentunit" },
-              { "id": "decimals", "value": 0 },
-              { "id": "custom.minWidth", "value": 68 }
             ]
           },
           {
@@ -208,7 +191,7 @@
           }
         ]
       },
-      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 9 },
+      "gridPos": { "h": 9, "w": 14, "x": 0, "y": 9 },
       "id": 25,
       "options": {
         "cellHeight": "sm",
@@ -218,10 +201,8 @@
       },
       "targets": [
         { "refId": "A", "expr": "max by (node) (max_over_time(up{job=\"fibre\"}[30s]))", "format": "table", "instant": true, "range": false },
-        { "refId": "B", "expr": "scalar(max(fibre_last_block_height)) - max by (node) (fibre_last_block_height)", "format": "table", "instant": true, "range": false },
         { "refId": "C", "expr": "count by (node) (max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) or on (node) (max by (node) (max_over_time(up{job=\"fibre\"}[30s])) == 1) * 0", "format": "table", "instant": true, "range": false },
         { "refId": "D", "expr": "avg by (node) (max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range))", "format": "table", "instant": true, "range": false },
-        { "refId": "E", "expr": "sum by (node) (increase(fibre_block_races_total{outcome=\"fibre_won\"}[$__range])) / (sum by (node) (increase(fibre_block_races_total{outcome=~\"fibre_won|fibre_lost\"}[$__range])) > 0)", "format": "table", "instant": true, "range": false },
         { "refId": "F", "expr": "1 - sum by (node) (increase(fibre_chunks_used_total[$__range])) / (sum by (node) (increase(fibre_chunks_received_total[$__range])) > 0)", "format": "table", "instant": true, "range": false }
       ],
       "title": "Node Status",
@@ -231,8 +212,8 @@
           "id": "organize",
           "options": {
             "excludeByName": { "Time": true },
-            "indexByName": { "node": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #E": 4, "Value #D": 5, "Value #F": 6 },
-            "renameByName": { "node": "Node", "Value #A": "Status", "Value #B": "Behind", "Value #C": "Rebuilt", "Value #E": "Win rate", "Value #D": "Mean time", "Value #F": "Duplicate chunks" }
+            "indexByName": { "node": 0, "Value #A": 1, "Value #C": 2, "Value #D": 3, "Value #F": 4 },
+            "renameByName": { "node": "Node", "Value #A": "Status", "Value #C": "Rebuilt", "Value #D": "Mean time", "Value #F": "Duplicate chunks" }
           }
         }
       ],
@@ -256,7 +237,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 9 },
+      "gridPos": { "h": 9, "w": 10, "x": 14, "y": 9 },
       "id": 26,
       "options": {
         "alignValue": "left",

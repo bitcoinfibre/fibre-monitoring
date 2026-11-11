@@ -12,6 +12,112 @@
   "panels": [
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "One row per monitored node; the node picker narrows it. Status is whether the collector has reached the node's exporter in the last 30 seconds. Behind is how many blocks the node's last seen height trails the chain tip. The other columns cover the selected time range. Rebuilt counts the blocks the node assembled from FIBRE/UDP chunks. Win rate is, of the blocks FIBRE/UDP and compact blocks raced to deliver to the node, the share FIBRE/UDP delivered, and Races is how many such blocks there were: a rate over a handful of races says little. A block the node heard first over TCP, before any FIBRE peer had it, is not a race, so the node that usually hears blocks first has few. Mean time is the node's mean time from the first UDP packet to the decoded block. Duplicate chunks is the share of the chunks the node received that it did not use, almost always because it already had them, from another peer or filled in from its own mempool; it is not packet loss. A node that is down shows no figures.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": false,
+            "inspect": false,
+            "minWidth": 60
+          },
+          "mappings": [],
+          "noValue": "–",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              { "id": "mappings", "value": [{ "type": "value", "options": { "0": { "color": "red", "index": 0, "text": "● Down" }, "1": { "color": "green", "index": 1, "text": "● Up" } } }] },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "custom.align", "value": "left" },
+              { "id": "custom.width", "value": 80 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Behind" },
+            "properties": [
+              { "id": "unit", "value": "none" },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "text", "value": null }, { "color": "orange", "value": 2 }, { "color": "red", "value": 6 }] } },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Rebuilt" },
+            "properties": [
+              { "id": "unit", "value": "none" },
+              { "id": "decimals", "value": 0 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Win rate" },
+            "properties": [
+              { "id": "unit", "value": "percentunit" },
+              { "id": "decimals", "value": 0 },
+              { "id": "custom.minWidth", "value": 68 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Races" },
+            "properties": [
+              { "id": "unit", "value": "none" },
+              { "id": "decimals", "value": 0 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Mean time" },
+            "properties": [
+              { "id": "unit", "value": "s" },
+              { "id": "custom.minWidth", "value": 80 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Duplicate chunks" },
+            "properties": [
+              { "id": "unit", "value": "percentunit" },
+              { "id": "decimals", "value": 1 },
+              { "id": "custom.width", "value": 138 }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "id": 25,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": false, "displayName": "Node" }]
+      },
+      "targets": [
+        { "refId": "A", "expr": "max by (node) (max_over_time(up{job=\"fibre\",node=~\"$node\"}[30s]))", "format": "table", "instant": true, "range": false },
+        { "refId": "B", "expr": "scalar(max(fibre_last_block_height)) - max by (node) (fibre_last_block_height{node=~\"$node\"})", "format": "table", "instant": true, "range": false },
+        { "refId": "C", "expr": "count by (node) (max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds{node=~\"$node\"}[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds{node=~\"$node\"} offset $__range)) or on (node) (max by (node) (max_over_time(up{job=\"fibre\",node=~\"$node\"}[30s])) == 1) * 0", "format": "table", "instant": true, "range": false },
+        { "refId": "D", "expr": "avg by (node) (max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds{node=~\"$node\"}[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds{node=~\"$node\"} offset $__range))", "format": "table", "instant": true, "range": false },
+        { "refId": "E", "expr": "sum by (node) (increase(fibre_block_races_total{node=~\"$node\",outcome=\"fibre_won\"}[$__range])) / (sum by (node) (increase(fibre_block_races_total{node=~\"$node\",outcome=~\"fibre_won|fibre_lost\"}[$__range])) > 0)", "format": "table", "instant": true, "range": false },
+        { "refId": "G", "expr": "round(sum by (node) (increase(fibre_block_races_total{node=~\"$node\",outcome=~\"fibre_won|fibre_lost\"}[$__range])))", "format": "table", "instant": true, "range": false },
+        { "refId": "F", "expr": "1 - sum by (node) (increase(fibre_chunks_used_total{node=~\"$node\"}[$__range])) / (sum by (node) (increase(fibre_chunks_received_total{node=~\"$node\"}[$__range])) > 0)", "format": "table", "instant": true, "range": false }
+      ],
+      "title": "Node Status",
+      "transformations": [
+        { "id": "merge", "options": {} },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true },
+            "indexByName": { "node": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #E": 4, "Value #G": 5, "Value #D": 6, "Value #F": 7 },
+            "renameByName": { "node": "Node", "Value #A": "Status", "Value #B": "Behind", "Value #C": "Rebuilt", "Value #E": "Win rate", "Value #G": "Races", "Value #D": "Mean time", "Value #F": "Duplicate chunks" }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -46,7 +152,7 @@
           }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
       "id": 21,
       "options": {
         "cellHeight": "sm",
@@ -87,78 +193,6 @@
         }
       ],
       "type": "table"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Of the blocks FIBRE/UDP and compact blocks raced for in the selected time range, the share FIBRE/UDP delivered. Blocks counted as no race, such as one the node heard first over TCP before any FIBRE peer had it, are left out: see fibre_block_races_total in METRICS.md.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "red", "value": null },
-              { "color": "orange", "value": 0.5 },
-              { "color": "green", "value": 0.8 }
-            ]
-          },
-          "unit": "percentunit",
-          "decimals": 1
-        }
-      },
-      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 0 },
-      "id": 22,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (node) (increase(fibre_block_races_total{node=~\"$node\",outcome=\"fibre_won\"}[$__range])) / (sum by (node) (increase(fibre_block_races_total{node=~\"$node\",outcome=~\"fibre_won|fibre_lost\"}[$__range])) > 0)",
-          "legendFormat": "{{node}}"
-        }
-      ],
-      "title": "FIBRE Relay Win Rate",
-      "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Mean time from the first UDP packet of a block to the block being fully decoded, over every block the node reconstructed in the selected time range. Lower is better. The time includes waiting for chunks to arrive, so it rises when the node's mempool is missing more of the block.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "fixed", "fixedColor": "text" },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] },
-          "unit": "s"
-        }
-      },
-      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 4 },
-      "id": 23,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (node) (increase(fibre_block_reconstruction_duration_seconds_sum{node=~\"$node\"}[$__range])) / (sum by (node) (increase(fibre_block_reconstruction_duration_seconds_count{node=~\"$node\"}[$__range])) > 0)",
-          "legendFormat": "{{node}}",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "title": "Mean Reconstruction Time",
-      "type": "stat"
     }
   ],
   "refresh": "10s",
