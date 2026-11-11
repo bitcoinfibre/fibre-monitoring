@@ -90,7 +90,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Share of blocks in the selected time range for which the race winner was FIBRE/UDP rather than compact blocks or another mechanism. This only considers blocks that emitted the block_race_winner USDT event.",
+      "description": "Of the blocks FIBRE/UDP and compact blocks raced for in the selected time range, the share FIBRE/UDP delivered. Blocks counted as no race, such as one the node heard first over TCP before any FIBRE peer had it, are left out: see fibre_block_races_total in METRICS.md.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -120,7 +120,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (node) (increase(fibre_block_deliveries_total{node=~\"$node\",mechanism=\"fibre_udp\"}[$__range])) / sum by (node) (increase(fibre_block_deliveries_total{node=~\"$node\"}[$__range]))",
+          "expr": "sum by (node) (increase(fibre_block_races_total{node=~\"$node\",outcome=\"fibre_won\"}[$__range])) / (sum by (node) (increase(fibre_block_races_total{node=~\"$node\",outcome=~\"fibre_won|fibre_lost\"}[$__range])) > 0)",
           "legendFormat": "{{node}}"
         }
       ],

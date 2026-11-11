@@ -24,7 +24,7 @@ let
     # TYPE fibre_exporter_up gauge
     fibre_exporter_up 1
     # TYPE fibre_exporter_probes_attached gauge
-    fibre_exporter_probes_attached 5
+    fibre_exporter_probes_attached 6
     # TYPE fibre_blocks_sent_total counter
     fibre_blocks_sent_total{node="node"} 3
     # TYPE fibre_host_udp_send_buffer_errors_total counter
@@ -174,6 +174,7 @@ pkgs.testers.runNixOSTest {
   };
 
   testScript = ''
+    import itertools
     import json
     import re
     import shlex
@@ -208,6 +209,33 @@ pkgs.testers.runNixOSTest {
         for annotation in dashboard.get("annotations", {}).get("list", []):
             if annotation.get("expr"):
                 yield f"annotation {annotation.get('name')}", annotation["expr"], uid_of(annotation)
+
+    def dashboard_choices(path):
+        """What each of a dashboard's pickers can be set to: every option of
+        a fixed list, and "All" of one read from the data."""
+        with open(path) as f:
+            variables = json.load(f).get("templating", {}).get("list", [])
+        choices = {}
+        for variable in variables:
+            if variable.get("type") == "custom" and variable.get("options"):
+                choices[variable["name"]] = [o["value"] for o in variable["options"]]
+            elif variable.get("includeAll"):
+                choices[variable["name"]] = [variable.get("allValue") or ".*"]
+            else:
+                choices[variable["name"]] = [variable.get("current", {}).get("value", "")]
+        return choices
+
+    # $name, or {name} and {name:format} after a $. Grafana's own
+    # variables, such as $__range, aren't pickers, so Grafana fills them.
+    variable_ref = re.compile(r"\$\{(\w+)(?::\w+)?\}|\$(\w+)")
+
+    def with_choices(expr, choices):
+        """The query once for each combination of its pickers' choices, as
+        a viewer could set them."""
+        used = sorted({m.group(1) or m.group(2) for m in variable_ref.finditer(expr)} & choices.keys())
+        for combination in itertools.product(*(choices[name] for name in used)):
+            values = dict(zip(used, combination))
+            yield variable_ref.sub(lambda m: values.get(m.group(1) or m.group(2), m.group(0)), expr)
 
     def grafana_query(expr, uid="prometheus"):
         """Run a query as a dashboard panel does, through the datasource it
@@ -271,7 +299,7 @@ pkgs.testers.runNixOSTest {
         assert {"FibreExporterDown", "FibreProbesDetached"} <= names, names
         collector.fail(alert_active("FibreProbesDetached"))
         node.succeed(
-            "sed -i 's/^fibre_exporter_probes_attached 5$/fibre_exporter_probes_attached 3/'"
+            "sed -i 's/^fibre_exporter_probes_attached 6$/fibre_exporter_probes_attached 3/'"
             " /run/stub-exporter/metrics"
         )
         collector.wait_until_succeeds(alert_active("FibreProbesDetached"))
@@ -288,13 +316,14 @@ pkgs.testers.runNixOSTest {
         # The check can fail: a broken query is reported.
         assert "error" in grafana_query("sum("), "a broken query was not reported"
         for name in ["fibre-dashboard.json", "fibre-dashboard-public.json"]:
-            queries = list(dashboard_queries(f"${dashboards}/{name}"))
+            path = f"${dashboards}/{name}"
+            queries = list(dashboard_queries(path))
             assert queries, f"{name}: no queries found"
+            choices = dashboard_choices(path)
             for title, expr, uid in queries:
-                # The node picker, set to all nodes.
-                expr = re.sub(r"\$\{?node\}?", ".*", expr)
-                result = grafana_query(expr, uid)
-                assert "error" not in result and result.get("status") == 200, f"{name}: {title}: {result}"
+                for query in with_choices(expr, choices):
+                    result = grafana_query(query, uid)
+                    assert "error" not in result and result.get("status") == 200, f"{name}: {title}: {query}: {result}"
         # What fills the private dashboard's node picker: every scraped node,
         # whether or not it has reconstructed a block.
         picker = json.loads(collector.succeed(

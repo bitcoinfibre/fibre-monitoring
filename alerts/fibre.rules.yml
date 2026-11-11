@@ -22,12 +22,12 @@ groups:
       # probes, e.g. while waiting for a restarted bitcoind, so relay metrics
       # are missing or partial.
       - alert: FibreProbesDetached
-        expr: fibre_exporter_probes_attached{job="fibre"} < 5
+        expr: fibre_exporter_probes_attached{job="fibre"} < 6
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "FIBRE exporter on {{ $labels.node }} traces {{ $value }} of 5 probes"
+          summary: "FIBRE exporter on {{ $labels.node }} traces {{ $value }} of 6 probes"
 
       # TODO: the UDP loss rules. Thresholds are a judgement call; see
       # METRICS.md "UDP Loss Metrics" and the mainnet VM test (2026-11-05).

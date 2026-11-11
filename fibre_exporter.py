@@ -17,6 +17,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from pathlib import Path
@@ -309,6 +310,18 @@ class FibreMetrics:
         ["node", "height"],
     ))
 
+    recent_block_reconstruction: Gauge = field(default_factory=lambda: Gauge(
+        "fibre_recent_block_reconstruction_seconds",
+        "Reconstruction time of each of the node's most recently reconstructed blocks, labeled with height",
+        ["node", "height"],
+    ))
+
+    block_races: Counter = field(default_factory=lambda: Counter(
+        "fibre_block_races_total",
+        "Blocks by how the race between FIBRE/UDP and compact blocks ended",
+        ["node", "outcome"],
+    ))
+
     # Block connection metrics (fires for ALL blocks, regardless of delivery path)
     blocks_connected: Counter = field(default_factory=lambda: Counter(
         "bitcoin_blocks_connected_total",
@@ -496,6 +509,7 @@ enum event_type {
     EVENT_BLOCK_SEND_START = 2,
     EVENT_BLOCK_DELIVERY = 3,
     EVENT_BLOCK_RECONSTRUCTION_DETAIL = 4,
+    EVENT_BLOCK_RACE_TIME = 5,
     EVENT_BLOCK_CONNECTED = 10,
 };
 
@@ -567,6 +581,21 @@ int trace_block_reconstruction_detail(struct pt_regs *ctx) {
     bpf_usdt_readarg(5, ctx, &event.mempool_tx_count);
     bpf_usdt_readarg(6, ctx, &event.total_tx_count);
     bpf_usdt_readarg(7, ctx, &event.all_tx_from_mempool);
+
+    events.perf_submit(ctx, &event, sizeof(event));
+    return 0;
+}
+
+int trace_block_race_time(struct pt_regs *ctx) {
+    struct event_t event = {};
+    event.type = EVENT_BLOCK_RACE_TIME;
+
+    // Args: block_hash, height, udp_ns, udp_peer, cmpct_ns, cmpct_peer
+    // udp_ns and cmpct_ns are -1 when that path had not started by the time
+    // the block connected.
+    bpf_usdt_readarg(2, ctx, &event.height);
+    bpf_usdt_readarg(3, ctx, &event.udp_ns);
+    bpf_usdt_readarg(5, ctx, &event.cmpct_ns);
 
     events.perf_submit(ctx, &event, sizeof(event));
     return 0;
@@ -804,8 +833,69 @@ EVENT_TYPE_NAMES: dict[int, str] = {
     2: "block_send_start",
     3: "block_delivery",
     4: "block_reconstruction_detail",
+    5: "block_race_time",
     10: "block_connected",
 }
+
+# The USDT probes the exporter attaches, as (provider, probe, BPF function).
+# The udp probes fire only on the FIBRE and compact block paths;
+# validation:block_connected fires for every block.
+PROBES: tuple[tuple[str, str, str], ...] = (
+    ("udp", "block_reconstructed", "trace_block_reconstructed"),
+    ("udp", "block_send_start", "trace_block_send_start"),
+    ("udp", "block_race_winner", "trace_block_delivery"),
+    ("udp", "block_race_time", "trace_block_race_time"),
+    ("udp", "block_reconstruction_detail", "trace_block_reconstruction_detail"),
+    ("validation", "block_connected", "trace_block_connected"),
+)
+
+# How many reconstructed blocks keep their own height-labelled series. Old
+# ones are removed so the exporter's series count stays bounded; Prometheus
+# keeps their history.
+RECENT_BLOCKS = 16
+
+# The outcomes fibre_block_races_total counts, see classify_race().
+RACE_OUTCOMES = ("fibre_won", "fibre_lost", "no_race")
+
+
+def classify_race(fibre_delivered: bool, udp_ns: int, cmpct_ns: int) -> str:
+    """Say how a block's race between FIBRE/UDP and compact blocks ended.
+
+    bitcoind names as winner the path whose call connected the block, for
+    every block that connects through either path. That includes a block
+    FIBRE never had a chance to deliver: the node that first hears a block
+    from outside the FIBRE network gets it as a compact block over TCP,
+    before any FIBRE peer has it to send. Counting that as a loss makes the
+    win rate measure topology instead of speed.
+
+    fibre_delivered: True when the block connected through the FIBRE/UDP
+        path, False when it connected through a compact block.
+    udp_ns: nanoseconds from the first UDP packet of the block to its
+        connection, or -1 if no FIBRE header had been decoded by then.
+    cmpct_ns: nanoseconds from the compact block's arrival to the block's
+        connection, or -1 if no compact block had arrived by then.
+
+    Returns one of RACE_OUTCOMES. The win rate is
+    fibre_won / (fibre_won + fibre_lost); no_race stays out of it.
+
+    The rules follow what bitcoind records (fibrerace.cpp, udprelay.cpp):
+
+    - FIBRE delivered: a win whatever cmpct_ns is. bitcoind ignores a
+      compact block that arrives after the block connected, so -1 only
+      means FIBRE was first by enough that none had arrived yet.
+    - A compact block delivered and udp_ns >= 0: a loss. FIBRE's header had
+      been decoded, so it was in the race. By how little it lost is not
+      known: bitcoind drops the unfinished reconstruction once the block is
+      accepted, so no margin can be applied.
+    - A compact block delivered and udp_ns == -1: no race. FIBRE had not
+      started here. That is the node that heard the block first, but also a
+      block whose FIBRE copy was still on its way: bitcoind drops UDP
+      packets for a block it already has without recording them, so the two
+      cannot be told apart on one node.
+    """
+    if fibre_delivered:
+        return "fibre_won"
+    return "fibre_lost" if udp_ns >= 0 else "no_race"
 
 
 class FibreExporter:
@@ -835,6 +925,14 @@ class FibreExporter:
             self.metrics.block_tx_count,
         ):
             metric.labels(node=config.node_name)
+        for outcome in RACE_OUTCOMES:
+            self.metrics.block_races.labels(node=config.node_name, outcome=outcome)
+        # Heights that have a fibre_recent_block_reconstruction_seconds series.
+        self._recent_heights: deque[str] = deque()
+        # A block's winner and its timing arrive as two events. Each waits
+        # here, by height, for the other.
+        self._race_winners: dict[int, str] = {}
+        self._race_times: dict[int, tuple[int, int]] = {}
         self.bpf: Optional[BPF] = None
         self._running = False
         self._pid_explicit = config.pid is not None
@@ -907,10 +1005,10 @@ class FibreExporter:
         self.metrics.exporter_probes_attached.set(attached_count)
         self._attached_pid = pid
         if old_pid is None:
-            self.logger.info(f"Attached {attached_count}/5 probes successfully")
+            self.logger.info(f"Attached {attached_count}/{len(PROBES)} probes successfully")
         else:
             self.logger.info(
-                f"Reattached {attached_count}/5 probes successfully after PID change "
+                f"Reattached {attached_count}/{len(PROBES)} probes successfully after PID change "
                 f"{old_pid} -> {pid}"
             )
         return True
@@ -966,6 +1064,8 @@ class FibreExporter:
                 self._handle_block_delivery(event)
             elif event.type == 4:  # BLOCK_RECONSTRUCTION_DETAIL
                 self._handle_block_reconstruction_detail(event)
+            elif event.type == 5:  # BLOCK_RACE_TIME
+                self._handle_block_race_time(event)
             elif event.type == 10:  # BLOCK_CONNECTED
                 self._handle_block_connected(event)
 
@@ -987,6 +1087,13 @@ class FibreExporter:
 
         if height > 0:
             self.metrics.last_block_height.labels(node=node).set(height)
+            # One series per recent block, so a table can list each block's
+            # exact time. Drop the oldest once RECENT_BLOCKS are held.
+            self.metrics.recent_block_reconstruction.labels(node=node, height=str(height)).set(duration_sec)
+            if str(height) not in self._recent_heights:
+                self._recent_heights.append(str(height))
+            while len(self._recent_heights) > RECENT_BLOCKS:
+                self.metrics.recent_block_reconstruction.remove(node, self._recent_heights.popleft())
             # Cancel any pending reset timer
             old_timer = getattr(self, '_reconstruction_event_timer', None)
             if old_timer:
@@ -1054,11 +1161,37 @@ class FibreExporter:
 
         self.metrics.block_deliveries.labels(node=node, mechanism=mechanism, peer=peer_str).inc()
         self.metrics.last_block_height.labels(node=node).set(event.height)
+        self._race_winners[event.height] = mechanism
+        self._record_race(event.height)
 
         if self.config.verbose:
             self.logger.info(
                 f"Block delivery: height={event.height} mechanism={mechanism} peer={peer_str}"
             )
+
+    def _handle_block_race_time(self, event: Any) -> None:
+        """Handle the timing of a block's race between FIBRE/UDP and compact blocks."""
+        self._race_times[event.height] = (event.udp_ns, event.cmpct_ns)
+        self._record_race(event.height)
+
+        if self.config.verbose:
+            self.logger.info(
+                f"Block race time: height={event.height} udp_ns={event.udp_ns} cmpct_ns={event.cmpct_ns}"
+            )
+
+    def _record_race(self, height: int) -> None:
+        """Count a block's race outcome once both its winner and its timing are known."""
+        if height in self._race_winners and height in self._race_times:
+            mechanism = self._race_winners.pop(height)
+            udp_ns, cmpct_ns = self._race_times.pop(height)
+            # A winner that is neither path took no part in the race.
+            if mechanism in ("fibre_udp", "bip152_cmpct"):
+                outcome = classify_race(mechanism == "fibre_udp", udp_ns, cmpct_ns)
+                self.metrics.block_races.labels(node=self.config.node_name, outcome=outcome).inc()
+        # A half whose other probe isn't attached never finds its partner.
+        for pending in (self._race_winners, self._race_times):
+            while len(pending) > 8:
+                del pending[next(iter(pending))]
 
     def _handle_block_connected(self, event: Any) -> None:
         """Handle block connected event (fires for every block)."""
@@ -1090,20 +1223,8 @@ class FibreExporter:
         self._usdt = USDT(path=self.config.bitcoind_path, pid=self.config.pid)
         usdt = self._usdt
 
-        # FIBRE-specific probes (udp provider) — only fire via compact block / FIBRE paths
-        fibre_probes = [
-            ("block_reconstructed", "trace_block_reconstructed", "udp"),
-            ("block_send_start", "trace_block_send_start", "udp"),
-            ("block_race_winner", "trace_block_delivery", "udp"),
-            ("block_reconstruction_detail", "trace_block_reconstruction_detail", "udp"),
-        ]
-        # General block probe (validation provider) — fires for ALL blocks unconditionally
-        validation_probes = [
-            ("block_connected", "trace_block_connected", "validation"),
-        ]
-
         attached_count = 0
-        for probe_name, fn_name, provider in fibre_probes + validation_probes:
+        for provider, probe_name, fn_name in PROBES:
             try:
                 usdt.enable_probe(probe=probe_name, fn_name=fn_name)
                 self.logger.info(f"Attached probe: {provider}:{probe_name}")

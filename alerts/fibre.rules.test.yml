@@ -31,9 +31,9 @@ tests:
     input_series:
       # a: loses two probes from minute 1 on. b: reattaches after 2 minutes.
       - series: 'fibre_exporter_probes_attached{job="fibre", node="a"}'
-        values: '5 3x10'
+        values: '6 3x10'
       - series: 'fibre_exporter_probes_attached{job="fibre", node="b"}'
-        values: '5 0 0 5x8'
+        values: '6 0 0 6x8'
     alert_rule_test:
       - eval_time: 4m
         alertname: FibreProbesDetached
@@ -46,4 +46,4 @@ tests:
               job: fibre
               node: a
             exp_annotations:
-              summary: "FIBRE exporter on a traces 3 of 5 probes"
+              summary: "FIBRE exporter on a traces 3 of 6 probes"

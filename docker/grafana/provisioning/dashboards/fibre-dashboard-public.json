@@ -142,7 +142,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "One row per monitored node. Status is whether the collector has reached the node's exporter in the last 30 seconds. Blocks behind is how far the node's last seen height trails the chain tip. Blocks reconstructed counts the blocks the node assembled from FIBRE/UDP chunks in the selected time range, and Mean reconstruction is the node's mean time to do so, from the first UDP packet to the decoded block. A node that is down shows no figures.",
+      "description": "One row per monitored node. Status is whether the collector has reached the node's exporter in the last 30 seconds. Blocks behind is how far the node's last seen height trails the chain tip. The other columns cover the selected time range. Blocks reconstructed counts the blocks the node assembled from FIBRE/UDP chunks. FIBRE win rate is, of the blocks FIBRE/UDP and compact blocks raced to deliver to the node, the share FIBRE/UDP delivered; a block the node heard first over TCP, before any FIBRE peer had it, is not a race, and a node with no races shows a dash. Mean reconstruction is the node's mean time from the first UDP packet to the decoded block. A node that is down shows no figures.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "fixed", "fixedColor": "text" },
@@ -183,6 +183,13 @@
             ]
           },
           {
+            "matcher": { "id": "byName", "options": "FIBRE win rate" },
+            "properties": [
+              { "id": "unit", "value": "percentunit" },
+              { "id": "decimals", "value": 0 }
+            ]
+          },
+          {
             "matcher": { "id": "byName", "options": "Mean reconstruction" },
             "properties": [
               { "id": "unit", "value": "s" }
@@ -202,7 +209,8 @@
         { "refId": "A", "expr": "max by (node) (max_over_time(up{job=\"fibre\"}[30s]))", "format": "table", "instant": true, "range": false },
         { "refId": "B", "expr": "scalar(max(fibre_last_block_height)) - max by (node) (fibre_last_block_height)", "format": "table", "instant": true, "range": false },
         { "refId": "C", "expr": "round(sum by (node) (increase(fibre_blocks_reconstructed_total[$__range])))", "format": "table", "instant": true, "range": false },
-        { "refId": "D", "expr": "sum by (node) (increase(fibre_block_reconstruction_duration_seconds_sum[$__range])) / (sum by (node) (increase(fibre_block_reconstruction_duration_seconds_count[$__range])) > 0)", "format": "table", "instant": true, "range": false }
+        { "refId": "D", "expr": "sum by (node) (increase(fibre_block_reconstruction_duration_seconds_sum[$__range])) / (sum by (node) (increase(fibre_block_reconstruction_duration_seconds_count[$__range])) > 0)", "format": "table", "instant": true, "range": false },
+        { "refId": "E", "expr": "sum by (node) (increase(fibre_block_races_total{outcome=\"fibre_won\"}[$__range])) / (sum by (node) (increase(fibre_block_races_total{outcome=~\"fibre_won|fibre_lost\"}[$__range])) > 0)", "format": "table", "instant": true, "range": false }
       ],
       "title": "Node Status",
       "transformations": [
@@ -211,8 +219,8 @@
           "id": "organize",
           "options": {
             "excludeByName": { "Time": true },
-            "indexByName": { "node": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #D": 4 },
-            "renameByName": { "node": "Node", "Value #A": "Status", "Value #B": "Blocks behind", "Value #C": "Blocks reconstructed", "Value #D": "Mean reconstruction" }
+            "indexByName": { "node": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #E": 4, "Value #D": 5 },
+            "renameByName": { "node": "Node", "Value #A": "Status", "Value #B": "Blocks behind", "Value #C": "Blocks reconstructed", "Value #E": "FIBRE win rate", "Value #D": "Mean reconstruction" }
           }
         }
       ],
@@ -369,7 +377,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "How many block reconstructions, counted once per node, fell into each time band over the selected time range. The bands follow the exporter's histogram buckets.",
+      "description": "How many block reconstructions, counted once per node, fell into each time band over the selected time range. The bars count the records listed in Recent Blocks beside it, so filtering that list by Band shows exactly the blocks behind a bar.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "fixed", "fixedColor": "blue" },
@@ -379,7 +387,7 @@
           "unit": "none"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "gridPos": { "h": 8, "w": 7, "x": 0, "y": 26 },
       "id": 27,
       "options": {
         "displayMode": "basic",
@@ -395,11 +403,11 @@
         "valueMode": "text"
       },
       "targets": [
-        { "refId": "A", "expr": "round(sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.025\"}[$__range])))", "legendFormat": "under 25 ms", "instant": true, "range": false },
-        { "refId": "B", "expr": "round(sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.05\"}[$__range])) - sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.025\"}[$__range])))", "legendFormat": "25 to 50 ms", "instant": true, "range": false },
-        { "refId": "C", "expr": "round(sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.1\"}[$__range])) - sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.05\"}[$__range])))", "legendFormat": "50 to 100 ms", "instant": true, "range": false },
-        { "refId": "D", "expr": "round(sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.25\"}[$__range])) - sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.1\"}[$__range])))", "legendFormat": "100 to 250 ms", "instant": true, "range": false },
-        { "refId": "E", "expr": "round(sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"+Inf\"}[$__range])) - sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.25\"}[$__range])))", "legendFormat": "over 250 ms", "instant": true, "range": false }
+        { "refId": "A", "expr": "count(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) < 0.025) or vector(0)", "legendFormat": "under 25 ms", "instant": true, "range": false },
+        { "refId": "B", "expr": "count(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.025 < 0.05) or vector(0)", "legendFormat": "25 to 50 ms", "instant": true, "range": false },
+        { "refId": "C", "expr": "count(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.05 < 0.1) or vector(0)", "legendFormat": "50 to 100 ms", "instant": true, "range": false },
+        { "refId": "D", "expr": "count(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.1 < 0.25) or vector(0)", "legendFormat": "100 to 250 ms", "instant": true, "range": false },
+        { "refId": "E", "expr": "count(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.25) or vector(0)", "legendFormat": "over 250 ms", "instant": true, "range": false }
       ],
       "title": "Reconstruction Time Distribution",
       "type": "bargauge"
@@ -439,7 +447,7 @@
           "unit": "percentunit"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 26 },
       "id": 16,
       "interval": "1m",
       "options": {
@@ -451,6 +459,77 @@
       ],
       "title": "Unneeded Chunks per Block",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Every block reconstructed in the selected time range, newest first: which node reconstructed it, the exact time it took, and the time band that puts it in. To list the blocks behind one bar of Reconstruction Time Distribution, use the filter icon in the Band column's header; it narrows this list only. A block appears once for each node that reconstructed it over FIBRE.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": false,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Block" },
+            "properties": [
+              { "id": "unit", "value": "none" },
+              { "id": "custom.align", "value": "left" },
+              { "id": "custom.width", "value": 95 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Node" },
+            "properties": [
+              { "id": "custom.width", "value": 110 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Time" },
+            "properties": [
+              { "id": "unit", "value": "s" },
+              { "id": "custom.width", "value": 100 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Band" },
+            "properties": [
+              { "id": "custom.filterable", "value": true }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 9, "x": 7, "y": 26 },
+      "id": 28,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Block" }]
+      },
+      "targets": [
+        { "refId": "A", "expr": "label_replace(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) < 0.025, \"band\", \"under 25 ms\", \"\", \"\") or label_replace(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.025 < 0.05, \"band\", \"25 to 50 ms\", \"\", \"\") or label_replace(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.05 < 0.1, \"band\", \"50 to 100 ms\", \"\", \"\") or label_replace(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.1 < 0.25, \"band\", \"100 to 250 ms\", \"\", \"\") or label_replace(max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) >= 0.25, \"band\", \"over 250 ms\", \"\", \"\")", "legendFormat": "__auto", "instant": true, "range": false }
+      ],
+      "title": "Recent Blocks",
+      "transformations": [
+        { "id": "reduce", "options": { "includeTimeField": false, "labelsToFields": true, "mode": "seriesToRows", "reducers": ["lastNotNull"] } },
+        { "id": "convertFieldType", "options": { "conversions": [{ "destinationType": "number", "targetField": "height" }], "fields": {} } },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Field": true },
+            "indexByName": { "height": 0, "node": 1, "Last *": 2, "band": 3 },
+            "renameByName": { "height": "Block", "node": "Node", "Last *": "Time", "band": "Band" }
+          }
+        }
+      ],
+      "type": "table"
     }
   ],
   "refresh": "30s",

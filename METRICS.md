@@ -18,9 +18,10 @@ Five of the eight available USDT probes are used:
 | `block_reconstruction_detail` | `udp` | `udprelay.cpp` | Per-block missing transaction and mempool reconstruction details |
 | `block_send_start` | `udp` | `udprelay.cpp` | Block relay started via UDP |
 | `block_race_winner` | `udp` | `fibrerace.cpp` | Which mechanism (FIBRE/UDP vs compact block) delivered the block first |
+| `block_race_time` | `udp` | `fibrerace.cpp` | How long each of the two paths had been running when the block connected, or that it had not started |
 | `block_connected` | `validation` | `validation.cpp` | Block connected to the chain (standard Bitcoin Core probe) |
 
-Unused probes: `udp:block_header_chunk` (internal timing breakdown), `udp:block_coinbase` (coinbase script extraction), `udp:block_race_time` (detailed path timing comparison).
+Unused probes: `udp:block_header_chunk` (internal timing breakdown), `udp:block_coinbase` (coinbase script extraction).
 
 ## Labels
 
@@ -31,7 +32,9 @@ All metrics use at least the `node` label, set by `--node-name` at exporter star
 | `node` | All FIBRE and block metrics | User-configured name | Identifies the bitcoind instance |
 | `mechanism` | `fibre_block_deliveries_total` | `fibre_udp`, `bip152_cmpct`, `other` | How the block was delivered |
 | `peer` | `fibre_block_deliveries_total` | IP:port string | Which peer delivered the block |
-| `event_type` | `fibre_exporter_events_processed_total` | `block_reconstructed`, `block_reconstruction_detail`, `block_send_start`, `block_delivery`, `block_connected` | Type of BPF event |
+| `outcome` | `fibre_block_races_total` | `fibre_won`, `fibre_lost`, `no_race` | How the block's race between FIBRE/UDP and compact blocks ended |
+| `height` | `fibre_recent_block_reconstruction_seconds`, `fibre_block_reconstructed_event` | Block height | Which block the series is about |
+| `event_type` | `fibre_exporter_events_processed_total` | `block_reconstructed`, `block_reconstruction_detail`, `block_send_start`, `block_delivery`, `block_race_time`, `block_connected` | Type of BPF event |
 | `error_type` | `fibre_exporter_errors_total` | `event_processing` | Category of error |
 
 ## FIBRE Block Relay Metrics
@@ -137,7 +140,33 @@ Records which peer delivered each block and via which mechanism. The `mechanism`
 | `bip152_cmpct` | Block arrived first via BIP 152 compact blocks |
 | `other` | Unknown or other delivery mechanism |
 
-This metric is key for understanding whether FIBRE is actually winning the relay race against compact blocks.
+This metric says which peers a node's blocks come from. It is a poor win rate: the node that first hears a block from outside the FIBRE network receives it as a compact block before any FIBRE peer has it to send, and that counts here as a compact block delivery. Use `fibre_block_races_total` for the win rate.
+
+### `fibre_block_races_total`
+
+- **Type:** Counter
+- **Labels:** `node`, `outcome`
+- **USDT probes:** `udp:block_race_winner` and `udp:block_race_time`
+
+Counts each block that connected through FIBRE/UDP or a compact block, by how the race between the two ended. The exporter pairs the block's winner with its timing, which says whether each path had started by the time the block connected, and `classify_race()` in `fibre_exporter.py` turns the pair into an outcome:
+
+| `outcome` value | Meaning |
+|---|---|
+| `fibre_won` | FIBRE/UDP delivered the block, whether or not a compact block had arrived by then |
+| `fibre_lost` | A compact block delivered the block although a FIBRE header for it had already been decoded, so FIBRE was in the race |
+| `no_race` | A compact block delivered the block and no FIBRE header had been decoded by then |
+
+`no_race` is the node that heard the block first, before any FIBRE peer had it to send, which says nothing about FIBRE's speed. It also covers a block whose FIBRE copy was still on its way: bitcoind drops UDP packets for a block it already has without recording them, so one node cannot tell the two apart. A loss has no margin either, because bitcoind drops the unfinished reconstruction once the block is accepted another way.
+
+All three series exist at 0 from the exporter's start. The win rate is `fibre_won / (fibre_won + fibre_lost)`.
+
+### `fibre_recent_block_reconstruction_seconds`
+
+- **Type:** Gauge
+- **Labels:** `node`, `height`
+- **USDT probe:** `udp:block_reconstructed` (argument 6: `duration_us`, argument 7: `height`)
+
+The exact reconstruction time of each of the node's 16 most recently reconstructed blocks, one series per block. Older blocks lose their series so the exporter's series count stays bounded, while Prometheus keeps their history: `last_over_time(fibre_recent_block_reconstruction_seconds[6h])` lists every block reconstructed in the last six hours with its time. Each block adds one series to Prometheus per node, about 144 a day.
 
 ### `fibre_last_block_height`
 
@@ -233,16 +262,21 @@ These are internal metrics about the exporter process itself, not derived from U
 | `fibre_exporter_start_time_seconds` | Gauge | Unix timestamp when the exporter started |
 | `fibre_exporter_events_processed_total` | Counter | Events processed, by `event_type` label |
 | `fibre_exporter_errors_total` | Counter | Errors encountered, by `error_type` label |
-| `fibre_exporter_probes_attached` | Gauge | Number of USDT probes successfully attached (out of 5) |
+| `fibre_exporter_probes_attached` | Gauge | Number of USDT probes successfully attached (out of 6) |
 | `fibre_exporter_info` | Info | Exporter version, node name, and bitcoind path |
 
 ## Example PromQL Queries
 
-**FIBRE relay win rate** — fraction of blocks delivered by FIBRE vs compact blocks:
+**FIBRE relay win rate** — of the blocks FIBRE and compact blocks raced for, the fraction FIBRE delivered:
 ```promql
-sum(rate(fibre_block_deliveries_total{mechanism="fibre_udp"}[1h]))
+sum(increase(fibre_block_races_total{outcome="fibre_won"}[1h]))
 /
-sum(rate(fibre_block_deliveries_total[1h]))
+sum(increase(fibre_block_races_total{outcome=~"fibre_won|fibre_lost"}[1h]))
+```
+
+**Blocks reconstructed in the last six hours, with each one's time:**
+```promql
+last_over_time(fibre_recent_block_reconstruction_seconds[6h])
 ```
 
 **p95 reconstruction time over the last hour:**
