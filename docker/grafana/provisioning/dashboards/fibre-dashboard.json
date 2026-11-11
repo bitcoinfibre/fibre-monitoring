@@ -223,7 +223,7 @@
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "",
-  "title": "FIBRE Block Relay",
+  "title": "FIBRE Block Relay (Operators)",
   "uid": "fibre-relay",
   "version": 1
 }

@@ -82,7 +82,7 @@ docker/
 
 `fibre-dashboard-public.json` is a variant of the main dashboard designed for Grafana's **Share externally** feature. It removes template variables and the built-in annotations datasource, which are unsupported for public sharing. It always displays all configured nodes.
 
-To share it publicly: open the "FIBRE Block Relay (Public)" dashboard in Grafana, click **Share > Share externally**, and enable the public link.
+To share it publicly: open the "FIBRE Block Relay" dashboard in Grafana (the main dashboard is "FIBRE Block Relay (Operators)"), click **Share > Share externally**, and enable the public link.
 
 ## Managing Containers
 

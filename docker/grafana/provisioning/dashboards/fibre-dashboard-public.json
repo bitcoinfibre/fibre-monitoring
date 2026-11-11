@@ -59,7 +59,7 @@
           }
         ]
       },
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 4 },
+      "gridPos": { "h": 3, "w": 12, "x": 0, "y": 4 },
       "id": 20,
       "options": {
         "colorMode": "value",
@@ -67,6 +67,7 @@
         "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "text": { "titleSize": 18, "valueSize": 30 },
         "textMode": "value_and_name"
       },
       "targets": [
@@ -78,16 +79,28 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "The highest block height any node has seen.",
+      "description": "The highest block height any node has seen, and how long ago that tip last advanced on any node, by any delivery path. Blocks arrive about every 10 minutes on average, but unevenly: the wait is over 15 minutes about a fifth of the time and over an hour every few days. The age turns orange after 15 minutes and red after an hour, and looks back 6 hours.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "fixed", "fixedColor": "text" },
           "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] },
           "unit": "none"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Age" },
+            "properties": [
+              { "id": "unit", "value": "s" },
+              { "id": "decimals", "value": 0 },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "text", "value": null }, { "color": "orange", "value": 900 }, { "color": "red", "value": 3600 }] } },
+              { "id": "mappings", "value": [{ "type": "range", "options": { "from": 21600, "to": null, "result": { "index": 0, "text": "over 6 h" } } }] }
+            ]
+          }
+        ]
       },
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 4 },
+      "gridPos": { "h": 3, "w": 12, "x": 12, "y": 4 },
       "id": 21,
       "options": {
         "colorMode": "value",
@@ -95,46 +108,19 @@
         "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "value"
+        "text": { "titleSize": 18, "valueSize": 30 },
+        "textMode": "value_and_name"
       },
       "targets": [
-        { "refId": "A", "expr": "max(fibre_last_block_height)", "instant": true, "range": false }
+        { "refId": "A", "expr": "max(fibre_last_block_height)", "legendFormat": "Height", "instant": true, "range": false },
+        { "refId": "B", "expr": "time() - max_over_time((vector(time()) and on() (max(fibre_last_block_height) > max(fibre_last_block_height offset 30s)))[6h:15s]) or vector(21600)", "legendFormat": "Age", "instant": true, "range": false }
       ],
-      "title": "Chain Tip",
-      "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "How long ago the chain tip last advanced on any node, by any delivery path. Blocks arrive about every 10 minutes on average, but an hour without one happens a few times a year. Looks back 6 hours.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "decimals": 0,
-          "mappings": [],
-          "noValue": "over 6 h",
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }, { "color": "orange", "value": 3600 }, { "color": "red", "value": 7200 }] },
-          "unit": "s"
-        }
-      },
-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 4 },
-      "id": 22,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "value"
-      },
-      "targets": [
-        { "refId": "A", "expr": "time() - max_over_time((vector(time()) and on() (max(fibre_last_block_height) > max(fibre_last_block_height offset 30s)))[6h:15s])", "instant": true, "range": false }
-      ],
-      "title": "Time Since Last Block",
+      "title": "Last Block",
       "type": "stat"
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
       "id": 31,
       "panels": [],
       "title": "Nodes",
@@ -191,7 +177,7 @@
           }
         ]
       },
-      "gridPos": { "h": 9, "w": 14, "x": 0, "y": 9 },
+      "gridPos": { "h": 9, "w": 14, "x": 0, "y": 8 },
       "id": 25,
       "options": {
         "cellHeight": "sm",
@@ -237,7 +223,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 10, "x": 14, "y": 9 },
+      "gridPos": { "h": 9, "w": 10, "x": 14, "y": 8 },
       "id": 26,
       "options": {
         "alignValue": "left",
@@ -255,7 +241,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
       "id": 32,
       "panels": [],
       "title": "Blocks",
@@ -322,7 +308,7 @@
           }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
       "id": 12,
       "interval": "1m",
       "options": {
@@ -346,7 +332,7 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
+            "axisLabel": "Missing bytes",
             "axisPlacement": "auto",
             "axisSoftMin": 0,
             "barAlignment": 0,
@@ -366,13 +352,13 @@
           },
           "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] },
-          "unit": "bytes"
+          "unit": "decbytes"
         },
         "overrides": [
           {
             "matcher": { "id": "byFrameRefID", "options": "B" },
             "properties": [
-              { "id": "unit", "value": "short" },
+              { "id": "unit", "value": "locale" },
               { "id": "color", "value": { "mode": "fixed", "fixedColor": "text" } },
               { "id": "custom.axisPlacement", "value": "hidden" },
               { "id": "custom.hideFrom", "value": { "legend": true, "tooltip": false, "viz": false } },
@@ -404,7 +390,7 @@
           }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
       "id": 18,
       "interval": "1m",
       "options": {
@@ -463,7 +449,7 @@
           }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
       "id": 27,
       "options": {
         "displayMode": "gradient",
@@ -476,6 +462,7 @@
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "showUnfilled": true,
         "sizing": "auto",
+        "text": { "valueSize": 24 },
         "valueMode": "text"
       },
       "targets": [
@@ -519,7 +506,7 @@
           }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
       "id": 28,
       "options": {
         "cellHeight": "sm",
@@ -551,7 +538,7 @@
   "time": { "from": "now-6h", "to": "now" },
   "timepicker": {},
   "timezone": "",
-  "title": "FIBRE Block Relay (Public)",
+  "title": "FIBRE Block Relay",
   "uid": "fibre-relay-public",
   "version": 1
 }
