@@ -126,7 +126,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "One row per monitored node. Status is whether the collector can reach the node's exporter. Blocks behind is how far the node's last seen height trails the chain tip. Blocks reconstructed counts the blocks the node assembled from FIBRE/UDP chunks in the selected time range. A node that is down shows no figures.",
+      "description": "One row per monitored node. Status is whether the collector can reach the node's exporter. Blocks behind is how far the node's last seen height trails the chain tip. Blocks reconstructed counts the blocks the node assembled from FIBRE/UDP chunks in the selected time range, and Mean reconstruction is the node's mean time to do so, from the first UDP packet to the decoded block. A node that is down shows no figures.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "fixed", "fixedColor": "text" },
@@ -165,6 +165,12 @@
               { "id": "unit", "value": "none" },
               { "id": "decimals", "value": 0 }
             ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Mean reconstruction" },
+            "properties": [
+              { "id": "unit", "value": "s" }
+            ]
           }
         ]
       },
@@ -179,7 +185,8 @@
       "targets": [
         { "refId": "A", "expr": "max by (node) (up{job=\"fibre\"})", "format": "table", "instant": true, "range": false },
         { "refId": "B", "expr": "scalar(max(fibre_last_block_height)) - max by (node) (fibre_last_block_height)", "format": "table", "instant": true, "range": false },
-        { "refId": "C", "expr": "round(sum by (node) (increase(fibre_blocks_reconstructed_total[$__range])))", "format": "table", "instant": true, "range": false }
+        { "refId": "C", "expr": "round(sum by (node) (increase(fibre_blocks_reconstructed_total[$__range])))", "format": "table", "instant": true, "range": false },
+        { "refId": "D", "expr": "sum by (node) (increase(fibre_block_reconstruction_duration_seconds_sum[$__range])) / (sum by (node) (increase(fibre_block_reconstruction_duration_seconds_count[$__range])) > 0)", "format": "table", "instant": true, "range": false }
       ],
       "title": "Nodes",
       "transformations": [
@@ -188,8 +195,8 @@
           "id": "organize",
           "options": {
             "excludeByName": { "Time": true },
-            "indexByName": { "node": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3 },
-            "renameByName": { "node": "Node", "Value #A": "Status", "Value #B": "Blocks behind", "Value #C": "Blocks reconstructed" }
+            "indexByName": { "node": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #D": 4 },
+            "renameByName": { "node": "Node", "Value #A": "Status", "Value #B": "Blocks behind", "Value #C": "Blocks reconstructed", "Value #D": "Mean reconstruction" }
           }
         }
       ],
@@ -231,7 +238,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Time from the first UDP packet of a block to the block being fully decoded, averaged over Grafana's adaptive query window. When only one block falls in the window, this is that block's exact time; with multiple blocks, it becomes the average across them. Lower is better. The time includes waiting for chunks to arrive, so it rises when the node's mempool is missing more of the block. Gaps are expected when no blocks were reconstructed.",
+      "description": "Time from the first UDP packet of a block to the block being fully decoded. Each dot is one block on one node; two blocks less than about a minute apart on the same node share a dot at their average. Lower is better. The time includes waiting for chunks to arrive, so it rises when the node's mempool is missing more of the block: compare with Missing Transaction Bytes per Block beside it.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -241,15 +248,16 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
+            "axisSoftMin": 0,
             "barAlignment": 0,
-            "drawStyle": "line",
+            "drawStyle": "points",
             "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
-            "pointSize": 6,
+            "pointSize": 8,
             "scaleDistribution": { "type": "linear" },
             "showPoints": "always",
             "spanNulls": false,
@@ -261,21 +269,22 @@
           "unit": "s"
         }
       },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 15 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
       "id": 12,
+      "interval": "1m",
       "options": {
-        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
         { "refId": "A", "expr": "rate(fibre_block_reconstruction_duration_seconds_sum{node=~\".*\"}[$__rate_interval]) / rate(fibre_block_reconstruction_duration_seconds_count{node=~\".*\"}[$__rate_interval])", "legendFormat": "{{node}}" }
       ],
-      "title": "Block Reconstruction Time",
+      "title": "Reconstruction Time per Block",
       "type": "timeseries"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Per-block chunk averages over Grafana's adaptive query window. \"Avg used/block\" comes from the per-block histogram, while \"Avg received/block\" is total received chunks divided by reconstructed blocks in the same window. Gaps are expected when no blocks were reconstructed.",
+      "description": "The transactions of a block that a node did not already have in its mempool and had to receive as FIBRE chunks. Each dot is one block on one node, placed by the serialized bytes that were missing; hover over a dot to also see how many transactions that was. Two blocks less than about a minute apart on the same node share a dot at their average. More missing bytes mean more chunks to wait for, and a longer reconstruction.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -285,150 +294,16 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
+            "axisSoftMin": 0,
             "barAlignment": 0,
-            "drawStyle": "line",
+            "drawStyle": "points",
             "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
-            "pointSize": 6,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "always",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] },
-          "unit": "short"
-        }
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
-      "id": 13,
-      "options": {
-        "legend": { "calcs": ["mean", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        { "refId": "A", "expr": "rate(fibre_block_chunks_used_sum{node=~\".*\"}[$__rate_interval]) / rate(fibre_block_chunks_used_count{node=~\".*\"}[$__rate_interval])", "legendFormat": "Avg used/block - {{node}}" },
-        { "refId": "B", "expr": "increase(fibre_chunks_received_total{node=~\".*\"}[$__rate_interval]) / increase(fibre_blocks_reconstructed_total{node=~\".*\"}[$__rate_interval])", "legendFormat": "Avg received/block - {{node}}" }
-      ],
-      "title": "Chunks per Block",
-      "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Chunk efficiency over Grafana's adaptive query window. Values near 1.0 mean most received chunks were needed; lower values mean more FEC overhead was consumed. Gaps are expected during windows with no reconstructed blocks.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 6,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "always",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] },
-          "max": 1,
-          "min": 0,
-          "unit": "percentunit"
-        }
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
-      "id": 16,
-      "options": {
-        "legend": { "calcs": ["mean", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        { "refId": "A", "expr": "increase(fibre_chunks_used_total{node=~\".*\"}[$__rate_interval]) / increase(fibre_chunks_received_total{node=~\".*\"}[$__rate_interval])", "legendFormat": "Efficiency - {{node}}" }
-      ],
-      "title": "Chunk Efficiency (Used/Received)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Missing non-prefilled transactions per reconstructed block over Grafana's adaptive query window. When only one block falls in the window, this is that block's exact value; with multiple blocks, it becomes the average across them. Gaps are expected when no blocks were reconstructed.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 6,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "always",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] },
-          "unit": "short"
-        }
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
-      "id": 17,
-      "options": {
-        "legend": { "calcs": ["mean", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        { "refId": "A", "expr": "rate(fibre_block_missing_tx_count_sum{node=~\".*\"}[$__rate_interval]) / rate(fibre_block_missing_tx_count_count{node=~\".*\"}[$__rate_interval])", "legendFormat": "Missing tx/block - {{node}}" }
-      ],
-      "title": "Missing Transactions per Block",
-      "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Missing serialized transaction bytes per reconstructed block over Grafana's adaptive query window. When only one block falls in the window, this is that block's exact value; with multiple blocks, it becomes the average across them. Gaps are expected when no blocks were reconstructed.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 6,
+            "pointSize": 8,
             "scaleDistribution": { "type": "linear" },
             "showPoints": "always",
             "spanNulls": false,
@@ -438,18 +313,119 @@
           "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] },
           "unit": "bytes"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byFrameRefID", "options": "B" },
+            "properties": [
+              { "id": "unit", "value": "short" },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "text" } },
+              { "id": "custom.axisPlacement", "value": "hidden" },
+              { "id": "custom.hideFrom", "value": { "legend": true, "tooltip": false, "viz": false } },
+              { "id": "custom.drawStyle", "value": "line" },
+              { "id": "custom.lineWidth", "value": 0 },
+              { "id": "custom.showPoints", "value": "never" }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "id": 18,
+      "interval": "1m",
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        { "refId": "A", "expr": "rate(fibre_block_missing_tx_bytes_sum{node=~\".*\"}[$__rate_interval]) / rate(fibre_block_missing_tx_bytes_count{node=~\".*\"}[$__rate_interval])", "legendFormat": "{{node}}" },
+        { "refId": "B", "expr": "rate(fibre_block_missing_tx_count_sum{node=~\".*\"}[$__rate_interval]) / rate(fibre_block_missing_tx_count_count{node=~\".*\"}[$__rate_interval])", "legendFormat": "{{node}} transactions" }
+      ],
+      "title": "Missing Transactions per Block",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "How many block reconstructions, counted once per node, fell into each time band over the selected time range. The bands follow the exporter's histogram buckets.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "mappings": [],
+          "min": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "none"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
-      "id": 18,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "id": 27,
       "options": {
-        "legend": { "calcs": ["mean", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "displayMode": "basic",
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "left",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "text"
+      },
+      "targets": [
+        { "refId": "A", "expr": "round(sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.025\"}[$__range])))", "legendFormat": "under 25 ms", "instant": true, "range": false },
+        { "refId": "B", "expr": "round(sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.05\"}[$__range])) - sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.025\"}[$__range])))", "legendFormat": "25 to 50 ms", "instant": true, "range": false },
+        { "refId": "C", "expr": "round(sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.1\"}[$__range])) - sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.05\"}[$__range])))", "legendFormat": "50 to 100 ms", "instant": true, "range": false },
+        { "refId": "D", "expr": "round(sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.25\"}[$__range])) - sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.1\"}[$__range])))", "legendFormat": "100 to 250 ms", "instant": true, "range": false },
+        { "refId": "E", "expr": "round(sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"+Inf\"}[$__range])) - sum(increase(fibre_block_reconstruction_duration_seconds_bucket{le=\"0.25\"}[$__range])))", "legendFormat": "over 250 ms", "instant": true, "range": false }
+      ],
+      "title": "Reconstruction Time Distribution",
+      "type": "bargauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Share of the chunks received for a block that the node needed to reconstruct it. Each dot is one block on one node; two blocks less than about a minute apart on the same node share a dot at their average.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisSoftMin": 0,
+            "barAlignment": 0,
+            "drawStyle": "points",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 8,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "always",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "max": 1,
+          "min": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "id": 16,
+      "interval": "1m",
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "refId": "A", "expr": "rate(fibre_block_missing_tx_bytes_sum{node=~\".*\"}[$__rate_interval]) / rate(fibre_block_missing_tx_bytes_count{node=~\".*\"}[$__rate_interval])", "legendFormat": "Missing tx bytes/block - {{node}}" }
+        { "refId": "A", "expr": "increase(fibre_chunks_used_total{node=~\".*\"}[$__rate_interval]) / increase(fibre_chunks_received_total{node=~\".*\"}[$__rate_interval])", "legendFormat": "{{node}}" }
       ],
-      "title": "Missing Transaction Bytes per Block",
+      "title": "Chunk Efficiency (Used/Received)",
       "type": "timeseries"
     }
   ],
