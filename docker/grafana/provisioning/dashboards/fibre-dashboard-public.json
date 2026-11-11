@@ -25,15 +25,23 @@
       "gridPos": { "h": 2, "w": 24, "x": 0, "y": 0 },
       "id": 100,
       "options": {
-        "content": "# FIBRE Block Relay Dashboard\nReal-time monitoring of UDP block relay performance.",
+        "content": "FIBRE relays new Bitcoin blocks between nodes over UDP with error correction, so a node can rebuild a block from whichever packets arrive. This page shows the monitored nodes and how quickly each one rebuilds blocks.",
         "mode": "markdown"
       },
       "transparent": true,
       "type": "text"
     },
     {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 2 },
+      "id": 30,
+      "panels": [],
+      "title": "Network",
+      "type": "row"
+    },
+    {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "How many monitored nodes the collector can reach right now. A node counts as down when its exporter stops answering.",
+      "description": "How many monitored nodes the collector can reach. A node counts as down once its exporter has not answered for 30 seconds, so a restart that misses one scrape does not show.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "fixed", "fixedColor": "text" },
@@ -51,7 +59,7 @@
           }
         ]
       },
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 2 },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 3 },
       "id": 20,
       "options": {
         "colorMode": "value",
@@ -62,8 +70,8 @@
         "textMode": "value_and_name"
       },
       "targets": [
-        { "refId": "A", "expr": "count(up{job=\"fibre\"} == 1) or vector(0)", "legendFormat": "Up", "instant": true, "range": false },
-        { "refId": "B", "expr": "count(up{job=\"fibre\"} == 0) or vector(0)", "legendFormat": "Down", "instant": true, "range": false }
+        { "refId": "A", "expr": "count(max_over_time(up{job=\"fibre\"}[30s]) == 1) or vector(0)", "legendFormat": "Up", "instant": true, "range": false },
+        { "refId": "B", "expr": "count(max_over_time(up{job=\"fibre\"}[30s]) == 0) or vector(0)", "legendFormat": "Down", "instant": true, "range": false }
       ],
       "title": "Nodes",
       "type": "stat"
@@ -79,7 +87,7 @@
           "unit": "none"
         }
       },
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 2 },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 3 },
       "id": 21,
       "options": {
         "colorMode": "value",
@@ -108,7 +116,7 @@
           "unit": "s"
         }
       },
-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 2 },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 3 },
       "id": 22,
       "options": {
         "colorMode": "value",
@@ -125,8 +133,16 @@
       "type": "stat"
     },
     {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+      "id": 31,
+      "panels": [],
+      "title": "Nodes",
+      "type": "row"
+    },
+    {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "One row per monitored node. Status is whether the collector can reach the node's exporter. Blocks behind is how far the node's last seen height trails the chain tip. Blocks reconstructed counts the blocks the node assembled from FIBRE/UDP chunks in the selected time range, and Mean reconstruction is the node's mean time to do so, from the first UDP packet to the decoded block. A node that is down shows no figures.",
+      "description": "One row per monitored node. Status is whether the collector has reached the node's exporter in the last 30 seconds. Blocks behind is how far the node's last seen height trails the chain tip. Blocks reconstructed counts the blocks the node assembled from FIBRE/UDP chunks in the selected time range, and Mean reconstruction is the node's mean time to do so, from the first UDP packet to the decoded block. A node that is down shows no figures.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "fixed", "fixedColor": "text" },
@@ -174,7 +190,7 @@
           }
         ]
       },
-      "gridPos": { "h": 9, "w": 15, "x": 0, "y": 6 },
+      "gridPos": { "h": 9, "w": 15, "x": 0, "y": 8 },
       "id": 25,
       "options": {
         "cellHeight": "sm",
@@ -183,12 +199,12 @@
         "sortBy": [{ "desc": false, "displayName": "Node" }]
       },
       "targets": [
-        { "refId": "A", "expr": "max by (node) (up{job=\"fibre\"})", "format": "table", "instant": true, "range": false },
+        { "refId": "A", "expr": "max by (node) (max_over_time(up{job=\"fibre\"}[30s]))", "format": "table", "instant": true, "range": false },
         { "refId": "B", "expr": "scalar(max(fibre_last_block_height)) - max by (node) (fibre_last_block_height)", "format": "table", "instant": true, "range": false },
         { "refId": "C", "expr": "round(sum by (node) (increase(fibre_blocks_reconstructed_total[$__range])))", "format": "table", "instant": true, "range": false },
         { "refId": "D", "expr": "sum by (node) (increase(fibre_block_reconstruction_duration_seconds_sum[$__range])) / (sum by (node) (increase(fibre_block_reconstruction_duration_seconds_count[$__range])) > 0)", "format": "table", "instant": true, "range": false }
       ],
-      "title": "Nodes",
+      "title": "Node Status",
       "transformations": [
         { "id": "merge", "options": {} },
         {
@@ -204,7 +220,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Whether the collector could reach each node's exporter over the selected time range. Green is up; red is down or unreachable.",
+      "description": "Whether the collector could reach each node's exporter over the selected time range. Green is up; red is down or unreachable for 30 seconds or more. It follows the exporter, so a node can relay blocks while its strip is red.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -220,7 +236,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 9, "x": 15, "y": 6 },
+      "gridPos": { "h": 9, "w": 9, "x": 15, "y": 8 },
       "id": 26,
       "options": {
         "alignValue": "left",
@@ -231,17 +247,25 @@
         "tooltip": { "mode": "single", "sort": "none" }
       },
       "targets": [
-        { "refId": "A", "expr": "max by (node) (up{job=\"fibre\"})", "legendFormat": "{{node}}" }
+        { "refId": "A", "expr": "max by (node) (max_over_time(up{job=\"fibre\"}[30s]))", "legendFormat": "{{node}}" }
       ],
-      "title": "Node Availability",
+      "title": "Availability",
       "type": "state-timeline"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "id": 32,
+      "panels": [],
+      "title": "Blocks",
+      "type": "row"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "description": "Time from the first UDP packet of a block to the block being fully decoded. Each dot is one block on one node; two blocks less than about a minute apart on the same node share a dot at their average. Lower is better. The time includes waiting for chunks to arrive, so it rises when the node's mempool is missing more of the block: compare with Missing Transaction Bytes per Block beside it.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
+          "color": { "mode": "palette-classic-by-name" },
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,
@@ -269,7 +293,7 @@
           "unit": "s"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
       "id": 12,
       "interval": "1m",
       "options": {
@@ -287,7 +311,7 @@
       "description": "The transactions of a block that a node did not already have in its mempool and had to receive as FIBRE chunks. Each dot is one block on one node, placed by the serialized bytes that were missing; hover over a dot to also see how many transactions that was. Two blocks less than about a minute apart on the same node share a dot at their average. More missing bytes mean more chunks to wait for, and a longer reconstruction.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
+          "color": { "mode": "palette-classic-by-name" },
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,
@@ -329,7 +353,7 @@
           }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
       "id": 18,
       "interval": "1m",
       "options": {
@@ -355,7 +379,7 @@
           "unit": "none"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
       "id": 27,
       "options": {
         "displayMode": "basic",
@@ -382,16 +406,17 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Share of the chunks received for a block that the node needed to reconstruct it. Each dot is one block on one node; two blocks less than about a minute apart on the same node share a dot at their average.",
+      "description": "Share of the chunks a node received for a block that it did not need. These are mostly chunks it already had, from another peer or filled in from its own mempool, so a node fed by several peers normally shows more of them. Each dot is one block on one node. This is not packet loss: a lost packet never arrives to be counted, and a chunk that replaces it counts as needed.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
+          "color": { "mode": "palette-classic-by-name" },
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
+            "axisSoftMax": 0.1,
             "axisSoftMin": 0,
             "barAlignment": 0,
             "drawStyle": "points",
@@ -409,13 +434,12 @@
             "thresholdsStyle": { "mode": "off" }
           },
           "mappings": [],
-          "max": 1,
           "min": 0,
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] },
           "unit": "percentunit"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
       "id": 16,
       "interval": "1m",
       "options": {
@@ -423,9 +447,9 @@
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "refId": "A", "expr": "increase(fibre_chunks_used_total{node=~\".*\"}[$__rate_interval]) / increase(fibre_chunks_received_total{node=~\".*\"}[$__rate_interval])", "legendFormat": "{{node}}" }
+        { "refId": "A", "expr": "1 - increase(fibre_chunks_used_total{node=~\".*\"}[$__rate_interval]) / increase(fibre_chunks_received_total{node=~\".*\"}[$__rate_interval])", "legendFormat": "{{node}}" }
       ],
-      "title": "Chunk Efficiency (Used/Received)",
+      "title": "Unneeded Chunks per Block",
       "type": "timeseries"
     }
   ],

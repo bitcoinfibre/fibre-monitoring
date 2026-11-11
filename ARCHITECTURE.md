@@ -187,19 +187,19 @@ A visualization platform for metrics dashboards.
 |--------|------|---------|
 | Prometheus | Metrics | FIBRE performance metrics, block connection stats |
 
-**Dashboard Panels** (top to bottom):
+**Dashboard Panels** (top to bottom; the public dashboard groups its panels under Network, Nodes and Blocks):
 
 | Panel | What it shows |
 |---|---|
-| **Nodes** (tile) | How many monitored nodes the collector can reach right now, and how many it cannot. The down count turns red when it is above zero. |
+| **Nodes** | How many monitored nodes the collector can reach, and how many it cannot. A node counts as down once its exporter has not answered for 30 seconds. The down count turns red when it is above zero. |
 | **Chain Tip** | The highest block height any node has seen. |
 | **Time Since Last Block** | How long ago the chain tip last advanced on any node, by any delivery path. Blocks arrive about every 10 minutes on average; the figure turns orange after an hour and red after two. |
-| **Nodes** (table) | One row per monitored node: whether its exporter is reachable, how many blocks its last seen height trails the chain tip, and, for the selected time range, how many blocks it reconstructed from FIBRE/UDP chunks and its mean reconstruction time. A node that is down keeps its row and shows no figures. |
-| **Node Availability** | One strip per node over the selected time range: green while the collector could reach its exporter, red while it could not. |
+| **Node Status** | One row per monitored node: whether its exporter has been reachable in the last 30 seconds, how many blocks its last seen height trails the chain tip, and, for the selected time range, how many blocks it reconstructed from FIBRE/UDP chunks and its mean reconstruction time. A node that is down keeps its row and shows no figures. |
+| **Availability** | One strip per node over the selected time range: green while the collector could reach its exporter, red once it could not for 30 seconds or more, so a restart that misses one scrape does not show. It follows the exporter: a node can relay blocks while its strip is red. |
 | **Reconstruction Time per Block** | Time from the first UDP packet of a block to the block being fully decoded. Each dot is one block on one node; two blocks less than about a minute apart on the same node share a dot at their average. Lower is better. The time includes waiting for chunks to arrive, so it rises when the node's mempool is missing more of the block. |
 | **Missing Transactions per Block** | The transactions of a block that a node did not already have in its mempool and had to receive as FIBRE chunks. Each dot is placed by the serialized bytes that were missing, and hovering over it also shows how many transactions that was. It sits beside the reconstruction time because the missing bytes largely drive it: more bytes mean more chunks to wait for. |
 | **Reconstruction Time Distribution** | How many block reconstructions, counted once per node, fell into each time band over the selected time range: under 25 ms, 25 to 50 ms, 50 to 100 ms, 100 to 250 ms, and over 250 ms. |
-| **Chunk Efficiency** | This is the ratio of the two Chunk Throughput lines expressed as a single number: `used / received`. It answers a simple question: out of all the chunks that arrived, what fraction was actually needed? A value of **1.0 (100%)** means every chunk that arrived was used — zero waste, zero packet loss. A value of **0.5 (50%)** means only half the chunks were useful and the other half were FEC replacements for lost packets. A sustained drop points to network-level packet loss between the FIBRE peers. |
+| **Unneeded Chunks per Block** | Share of the chunks a node received for a block that it did not need, one dot per block. These are mostly chunks it already had, from another peer or filled in from its own mempool, so a node fed by several peers normally shows more of them. It is not a measure of packet loss: a lost packet never arrives to be counted, a chunk that replaces it counts as needed, and chunks arriving after the block is complete are not counted at all. |
 | **FIBRE Relay Win Rate** | Per node, the share of blocks in the selected time range that reached it over FIBRE/UDP before compact blocks did. Blocks that arrived another way, such as during catch-up after a restart, are not counted. *(Main dashboard only.)* |
 | **Mean Reconstruction Time** | Per node, the mean time from the first UDP packet of a block to the block being fully decoded, over every block reconstructed in the selected time range. *(Main dashboard only.)* |
 | **Block Delivery by Peer** | A table showing which peers delivered blocks and via which mechanism: **FIBRE/UDP** (green) or **Compact** blocks (orange). This reveals whether FIBRE is actually winning the relay race and which peers are most active. *(Main dashboard only — removed from public dashboard to avoid exposing peer IPs.)* |

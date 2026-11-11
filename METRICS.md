@@ -53,7 +53,7 @@ Incremented each time a block is fully reconstructed from FEC-encoded UDP chunks
 - **Buckets:** 1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s
 - **USDT probe:** `udp:block_reconstructed` (argument 6: `duration_us`)
 
-Time from receiving the first header packet to completing block reconstruction. This measures the end-to-end FIBRE relay latency. Typical values on a healthy FIBRE connection are under 100ms. Values over 1s suggest network issues or high chunk loss requiring extra FEC recovery.
+Time from receiving the first UDP packet of a block to the block being fully decoded, before validation. It includes waiting for chunks to arrive, so it depends heavily on how much of the block the node's mempool was missing: a node with most transactions already in its mempool needs few chunks and finishes sooner, while one missing most of the block waits for many more. A long time can therefore mean a poorly synced mempool as much as a slow or lossy link.
 
 ### `fibre_block_chunks_used`
 
@@ -62,7 +62,7 @@ Time from receiving the first header packet to completing block reconstruction. 
 - **Buckets:** 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000
 - **USDT probe:** `udp:block_reconstructed` (argument 3: `chunks_used`)
 
-Number of FEC chunks needed to reconstruct each block. A block is split into chunks for UDP relay; the FEC encoding means you only need a subset to reconstruct. Lower values relative to `chunks_received` indicate good network conditions.
+Number of chunks the node took from the network to reconstruct each block: the header chunks plus the block chunks its mempool could not supply. A block is split into chunks for UDP relay, and FEC encoding means any sufficient subset reconstructs it. The value follows `fibre_block_missing_tx_bytes`, at roughly one chunk per 1,152 missing bytes.
 
 ### `fibre_block_missing_tx_count`
 
@@ -105,7 +105,7 @@ Incremented when all non-prefilled transactions in a FIBRE-reconstructed block w
 - **Labels:** `node`
 - **USDT probe:** `udp:block_reconstructed` (argument 3: `chunks_used`)
 
-Running total of all FEC chunks used across all block reconstructions. Compare with `fibre_chunks_received_total` to calculate overall chunk efficiency.
+Running total of all chunks used across all block reconstructions. Compare with `fibre_chunks_received_total` to find the share of received chunks that were not needed.
 
 ### `fibre_chunks_received_total`
 
@@ -113,7 +113,7 @@ Running total of all FEC chunks used across all block reconstructions. Compare w
 - **Labels:** `node`
 - **USDT probe:** `udp:block_reconstructed` (argument 4: `chunks_recvd`)
 
-Running total of all FEC chunks received. The ratio `fibre_chunks_used_total / fibre_chunks_received_total` gives the chunk efficiency — values near 1.0 mean almost no redundant chunks, while lower values indicate more FEC overhead being used to compensate for packet loss.
+Running total of all chunks received while a block was still being collected. A received chunk goes unused when the node already had it, from another peer or filled in from its own mempool, or when it arrived out of order; `1 - fibre_chunks_used_total / fibre_chunks_received_total` is that unneeded share. It is not a measure of packet loss: a lost packet never arrives to be counted, an FEC chunk that replaces it counts as used, and chunks arriving after the block is complete are not counted.
 
 ### `fibre_blocks_sent_total`
 
@@ -121,7 +121,7 @@ Running total of all FEC chunks received. The ratio `fibre_chunks_used_total / f
 - **Labels:** `node`
 - **USDT probe:** `udp:block_send_start`
 
-Incremented each time the node begins relaying a block via UDP to its FIBRE peers. Only relevant for nodes that act as FIBRE relay senders.
+Incremented each time the node begins relaying a block via UDP to its FIBRE peers. This happens once for every newly accepted block, however the block arrived, including blocks connected while catching up after a restart, so it counts blocks relayed rather than FIBRE performance.
 
 ### `fibre_block_deliveries_total`
 
@@ -250,9 +250,9 @@ sum(rate(fibre_block_deliveries_total[1h]))
 histogram_quantile(0.95, sum(rate(fibre_block_reconstruction_duration_seconds_bucket[1h])) by (le, node))
 ```
 
-**Chunk efficiency:**
+**Share of received chunks that were not needed, over the last hour:**
 ```promql
-fibre_chunks_used_total / fibre_chunks_received_total
+1 - increase(fibre_chunks_used_total[1h]) / increase(fibre_chunks_received_total[1h])
 ```
 
 **Average missing transactions per reconstructed block:**
