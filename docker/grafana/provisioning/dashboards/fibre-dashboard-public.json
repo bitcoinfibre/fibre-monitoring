@@ -8,7 +8,8 @@
         "iconColor": "rgba(204, 204, 220, 0.5)",
         "name": "Block Arrival",
         "titleFormat": "Block {{height}}",
-        "step": "15s"
+        "step": "15s",
+        "filter": { "exclude": true, "ids": [26] }
       }
     ]
   },
@@ -32,99 +33,201 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "How many blocks were assembled from FIBRE/UDP FEC chunks in the selected time range. If this number is zero, blocks are arriving via compact blocks or full download instead of FIBRE.",
+      "description": "How many monitored nodes the collector can reach right now. A node counts as down when its exporter stops answering.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": { "mode": "fixed", "fixedColor": "text" },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null }
-            ]
-          },
-          "unit": "short"
-        }
-      },
-      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 2 },
-      "id": 1,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "targets": [
-        { "refId": "A", "expr": "round(sum by (node) (increase(fibre_blocks_reconstructed_total{node=~\".*\"}[$__range])))", "legendFormat": "{{node}}" }
-      ],
-      "title": "Blocks Reconstructed",
-      "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "How many blocks this node relayed out to its FIBRE peers. Only relevant if the node acts as a relay sender.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "blue", "value": null }
-            ]
-          },
-          "unit": "short"
-        }
-      },
-      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 2 },
-      "id": 2,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "targets": [
-        { "refId": "A", "expr": "round(sum by (node) (increase(fibre_blocks_sent_total{node=~\".*\"}[$__range])))", "legendFormat": "{{node}}" }
-      ],
-      "title": "Blocks Sent",
-      "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "The latest block height seen by the node. A quick liveness check — if it stops increasing, the node may be stalled or disconnected.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "purple", "value": null }
-            ]
-          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] },
           "unit": "none"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Down" },
+            "properties": [
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "text", "value": null }, { "color": "red", "value": 1 }] } }
+            ]
+          }
+        ]
       },
-      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 2 },
-      "id": 4,
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 2 },
+      "id": 20,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "justifyMode": "auto",
+        "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
+        "textMode": "value_and_name"
       },
       "targets": [
-        { "refId": "A", "expr": "fibre_last_block_height{node=~\".*\"}", "legendFormat": "{{node}}" }
+        { "refId": "A", "expr": "count(up{job=\"fibre\"} == 1) or vector(0)", "legendFormat": "Up", "instant": true, "range": false },
+        { "refId": "B", "expr": "count(up{job=\"fibre\"} == 0) or vector(0)", "legendFormat": "Down", "instant": true, "range": false }
       ],
-      "title": "Block Height",
+      "title": "Nodes",
       "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "The highest block height any node has seen.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] },
+          "unit": "none"
+        }
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 2 },
+      "id": 21,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "targets": [
+        { "refId": "A", "expr": "max(fibre_last_block_height)", "instant": true, "range": false }
+      ],
+      "title": "Chain Tip",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "How long ago the chain tip last advanced on any node, by any delivery path. Blocks arrive about every 10 minutes on average, but an hour without one happens a few times a year. Looks back 6 hours.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "over 6 h",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }, { "color": "orange", "value": 3600 }, { "color": "red", "value": 7200 }] },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 2 },
+      "id": 22,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "targets": [
+        { "refId": "A", "expr": "time() - max_over_time((vector(time()) and on() (max(fibre_last_block_height) > max(fibre_last_block_height offset 30s)))[6h:15s])", "instant": true, "range": false }
+      ],
+      "title": "Time Since Last Block",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "One row per monitored node. Status is whether the collector can reach the node's exporter. Blocks behind is how far the node's last seen height trails the chain tip. Blocks reconstructed counts the blocks the node assembled from FIBRE/UDP chunks in the selected time range. A node that is down shows no figures.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": false,
+            "inspect": false
+          },
+          "mappings": [],
+          "noValue": "–",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              { "id": "mappings", "value": [{ "type": "value", "options": { "0": { "color": "red", "index": 0, "text": "● Down" }, "1": { "color": "green", "index": 1, "text": "● Up" } } }] },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "custom.align", "value": "left" },
+              { "id": "custom.width", "value": 110 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Blocks behind" },
+            "properties": [
+              { "id": "unit", "value": "none" },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "text", "value": null }, { "color": "orange", "value": 2 }, { "color": "red", "value": 6 }] } },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Blocks reconstructed" },
+            "properties": [
+              { "id": "unit", "value": "none" },
+              { "id": "decimals", "value": 0 }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 9, "w": 15, "x": 0, "y": 6 },
+      "id": 25,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": false, "displayName": "Node" }]
+      },
+      "targets": [
+        { "refId": "A", "expr": "max by (node) (up{job=\"fibre\"})", "format": "table", "instant": true, "range": false },
+        { "refId": "B", "expr": "scalar(max(fibre_last_block_height)) - max by (node) (fibre_last_block_height)", "format": "table", "instant": true, "range": false },
+        { "refId": "C", "expr": "round(sum by (node) (increase(fibre_blocks_reconstructed_total[$__range])))", "format": "table", "instant": true, "range": false }
+      ],
+      "title": "Nodes",
+      "transformations": [
+        { "id": "merge", "options": {} },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true },
+            "indexByName": { "node": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3 },
+            "renameByName": { "node": "Node", "Value #A": "Status", "Value #B": "Blocks behind", "Value #C": "Blocks reconstructed" }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Whether the collector could reach each node's exporter over the selected time range. Green is up; red is down or unreachable.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "fillOpacity": 55,
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineWidth": 0,
+            "spanNulls": false
+          },
+          "mappings": [{ "type": "value", "options": { "0": { "index": 0, "text": "Down" }, "1": { "index": 1, "text": "Up" } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 9, "x": 15, "y": 6 },
+      "id": 26,
+      "options": {
+        "alignValue": "left",
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "mergeValues": true,
+        "rowHeight": 0.55,
+        "showValue": "never",
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        { "refId": "A", "expr": "max by (node) (up{job=\"fibre\"})", "legendFormat": "{{node}}" }
+      ],
+      "title": "Node Availability",
+      "type": "state-timeline"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -158,7 +261,7 @@
           "unit": "s"
         }
       },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 7 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 15 },
       "id": 12,
       "options": {
         "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -202,7 +305,7 @@
           "unit": "short"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
       "id": 13,
       "options": {
         "legend": { "calcs": ["mean", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -249,7 +352,7 @@
           "unit": "percentunit"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
       "id": 16,
       "options": {
         "legend": { "calcs": ["mean", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -293,7 +396,7 @@
           "unit": "short"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
       "id": 17,
       "options": {
         "legend": { "calcs": ["mean", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -337,7 +440,7 @@
           "unit": "bytes"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
       "id": 18,
       "options": {
         "legend": { "calcs": ["mean", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },

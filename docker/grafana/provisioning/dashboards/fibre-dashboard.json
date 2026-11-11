@@ -107,7 +107,7 @@
           "decimals": 1
         }
       },
-      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 0 },
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 0 },
       "id": 22,
       "options": {
         "colorMode": "value",
@@ -125,6 +125,39 @@
         }
       ],
       "title": "FIBRE Relay Win Rate",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Mean time from the first UDP packet of a block to the block being fully decoded, over every block the node reconstructed in the selected time range. Lower is better. The time includes waiting for chunks to arrive, so it rises when the node's mempool is missing more of the block.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 4 },
+      "id": 23,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (node) (increase(fibre_block_reconstruction_duration_seconds_sum{node=~\"$node\"}[$__range])) / (sum by (node) (increase(fibre_block_reconstruction_duration_seconds_count{node=~\"$node\"}[$__range])) > 0)",
+          "legendFormat": "{{node}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "title": "Mean Reconstruction Time",
       "type": "stat"
     }
   ],

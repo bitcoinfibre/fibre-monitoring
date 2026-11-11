@@ -191,12 +191,16 @@ A visualization platform for metrics dashboards.
 
 | Panel | What it shows |
 |---|---|
-| **Blocks Reconstructed** | How many blocks were assembled from FIBRE/UDP FEC chunks in the selected time range. If this number is zero, blocks are arriving via compact blocks or full download instead of FIBRE. |
-| **Blocks Sent** | How many blocks this node relayed out to its FIBRE peers. Only relevant if the node acts as a relay sender. |
-| **Block Height** | The latest block height seen by the node. A quick liveness check — if it stops increasing, the node may be stalled or disconnected. |
+| **Nodes** (tile) | How many monitored nodes the collector can reach right now, and how many it cannot. The down count turns red when it is above zero. |
+| **Chain Tip** | The highest block height any node has seen. |
+| **Time Since Last Block** | How long ago the chain tip last advanced on any node, by any delivery path. Blocks arrive about every 10 minutes on average; the figure turns orange after an hour and red after two. |
+| **Nodes** (table) | One row per monitored node: whether its exporter is reachable, how many blocks its last seen height trails the chain tip, and how many blocks it reconstructed from FIBRE/UDP chunks in the selected time range. A node that is down keeps its row and shows no figures. |
+| **Node Availability** | One strip per node over the selected time range: green while the collector could reach its exporter, red while it could not. |
 | **Block Reconstruction Time** | A time-series graph showing how long it takes to reconstruct each block from UDP chunks (mean per block, one series per node). Lower is better. Values under 100ms indicate a healthy FIBRE connection; spikes above 1s suggest packet loss or network issues. |
 | **Chunks per Block** | FIBRE splits each block into small UDP packets called chunks and adds extra chunks using Forward Error Correction (FEC), so the block can be reconstructed even if some packets are lost in transit. This panel plots two lines over time: **Received/block** (all chunks that arrived per block, including redundant FEC ones) and **Used/block** (only the chunks that were actually needed per block). When the two lines are close together, the network is clean. If "received" is noticeably higher than "used", extra FEC chunks are arriving because some packets were lost and needed replacement. |
 | **Chunk Efficiency** | This is the ratio of the two Chunk Throughput lines expressed as a single number: `used / received`. It answers a simple question: out of all the chunks that arrived, what fraction was actually needed? A value of **1.0 (100%)** means every chunk that arrived was used — zero waste, zero packet loss. A value of **0.5 (50%)** means only half the chunks were useful and the other half were FEC replacements for lost packets. A sustained drop points to network-level packet loss between the FIBRE peers. |
+| **FIBRE Relay Win Rate** | Per node, the share of blocks in the selected time range that reached it over FIBRE/UDP before compact blocks did. Blocks that arrived another way, such as during catch-up after a restart, are not counted. *(Main dashboard only.)* |
+| **Mean Reconstruction Time** | Per node, the mean time from the first UDP packet of a block to the block being fully decoded, over every block reconstructed in the selected time range. *(Main dashboard only.)* |
 | **Block Delivery by Peer** | A table showing which peers delivered blocks and via which mechanism: **FIBRE/UDP** (green) or **Compact** blocks (orange). This reveals whether FIBRE is actually winning the relay race and which peers are most active. *(Main dashboard only — removed from public dashboard to avoid exposing peer IPs.)* |
 
 ---
