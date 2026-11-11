@@ -421,7 +421,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "How many block reconstructions, counted once per node, fell into each time band over the selected time range. The bars count the records listed in Recent Blocks beside it, so filtering that list by Band shows exactly the blocks behind a bar.",
+      "description": "How many block reconstructions, counted once per node, fell into each time band over the selected time range. The bars count the cells of Recent Blocks beside it, and each bar has the shade of its cells.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "fixed", "fixedColor": "blue" },
@@ -429,12 +429,44 @@
           "min": 0,
           "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
           "unit": "none"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byFrameRefID", "options": "A" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "rgba(70, 120, 235, 0.12)" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byFrameRefID", "options": "B" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "rgba(70, 120, 235, 0.29)" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byFrameRefID", "options": "C" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#626F87" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byFrameRefID", "options": "D" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#476DB4" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byFrameRefID", "options": "E" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#2564E0" } }
+            ]
+          }
+        ]
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
       "id": 27,
       "options": {
-        "displayMode": "basic",
+        "displayMode": "gradient",
         "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": false },
         "maxVizHeight": 300,
         "minVizHeight": 16,
@@ -458,45 +490,31 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Every block reconstructed in the selected time range, newest first: which node reconstructed it, the exact time it took, and the time band that puts it in. To list the blocks behind one bar of Reconstruction Time Distribution, use the filter icon in the Band column's header; it narrows this list only. A block appears once for each node that reconstructed it over FIBRE.",
+      "description": "Every block reconstructed in the selected time range, newest first, with the time each node took to reconstruct it. A cell's shade is its time band, in the shades of Reconstruction Time Distribution beside it: the slower the block, the stronger the shade. A dash means the node did not reconstruct that block over FIBRE, usually because the block reached it another way first. Click a node's column header to sort by its times.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "fixed", "fixedColor": "text" },
+          "color": { "mode": "thresholds" },
           "custom": {
-            "align": "auto",
-            "cellOptions": { "type": "auto" },
+            "align": "right",
+            "cellOptions": { "type": "color-background", "mode": "basic" },
             "filterable": false,
-            "inspect": false
+            "inspect": false,
+            "minWidth": 76
           },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+          "mappings": [{ "type": "special", "options": { "match": "null", "result": { "color": "transparent", "index": 0, "text": "–" } } }],
+          "noValue": "–",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "rgba(70, 120, 235, 0.12)", "value": null }, { "color": "rgba(70, 120, 235, 0.29)", "value": 0.025 }, { "color": "#626F87", "value": 0.05 }, { "color": "#476DB4", "value": 0.1 }, { "color": "#2564E0", "value": 0.25 }] },
+          "unit": "s"
         },
         "overrides": [
           {
             "matcher": { "id": "byName", "options": "Block" },
             "properties": [
               { "id": "unit", "value": "none" },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "text" } },
+              { "id": "custom.cellOptions", "value": { "type": "auto" } },
               { "id": "custom.align", "value": "left" },
-              { "id": "custom.width", "value": 95 }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "Node" },
-            "properties": [
-              { "id": "custom.width", "value": 110 }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "Time" },
-            "properties": [
-              { "id": "unit", "value": "s" },
-              { "id": "custom.width", "value": 100 }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "Band" },
-            "properties": [
-              { "id": "custom.filterable", "value": true }
+              { "id": "custom.width", "value": 90 }
             ]
           }
         ]
@@ -506,24 +524,20 @@
       "options": {
         "cellHeight": "sm",
         "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "frozenColumns": { "left": 1 },
         "showHeader": true,
         "sortBy": [{ "desc": true, "displayName": "Block" }]
       },
       "targets": [
-        { "refId": "A", "expr": "label_replace((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) < 0.025, \"band\", \"under 25 ms\", \"\", \"\") or label_replace((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) >= 0.025 < 0.05, \"band\", \"25 to 50 ms\", \"\", \"\") or label_replace((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) >= 0.05 < 0.1, \"band\", \"50 to 100 ms\", \"\", \"\") or label_replace((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) >= 0.1 < 0.25, \"band\", \"100 to 250 ms\", \"\", \"\") or label_replace((max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)) >= 0.25, \"band\", \"over 250 ms\", \"\", \"\")", "legendFormat": "__auto", "instant": true, "range": false }
+        { "refId": "A", "expr": "max by (node, height) (last_over_time(fibre_recent_block_reconstruction_seconds[$__range])) unless max by (node, height) (fibre_recent_block_reconstruction_seconds offset $__range)", "legendFormat": "__auto", "instant": true, "range": false }
       ],
       "title": "Recent Blocks",
       "transformations": [
         { "id": "reduce", "options": { "includeTimeField": false, "labelsToFields": true, "mode": "seriesToRows", "reducers": ["lastNotNull"] } },
         { "id": "convertFieldType", "options": { "conversions": [{ "destinationType": "number", "targetField": "height" }], "fields": {} } },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": { "Field": true },
-            "indexByName": { "height": 0, "node": 1, "Last *": 2, "band": 3 },
-            "renameByName": { "height": "Block", "node": "Node", "Last *": "Time", "band": "Band" }
-          }
-        }
+        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "field": "node" }] } },
+        { "id": "groupingToMatrix", "options": { "columnField": "node", "rowField": "height", "valueField": "Last *", "emptyValue": "null" } },
+        { "id": "organize", "options": { "excludeByName": {}, "indexByName": {}, "renameByName": { "height\\node": "Block" } } }
       ],
       "type": "table"
     }
