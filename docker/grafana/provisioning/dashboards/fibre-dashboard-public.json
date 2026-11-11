@@ -22,10 +22,10 @@
   "liveNow": true,
   "panels": [
     {
-      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 0 },
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
       "id": 100,
       "options": {
-        "content": "FIBRE relays new Bitcoin blocks between nodes over UDP with error correction, so a node can rebuild a block from whichever packets arrive. This page shows the monitored nodes and how quickly each one rebuilds blocks.",
+        "content": "FIBRE relays new Bitcoin blocks between nodes over UDP with error correction.<br>This page shows the monitored nodes and how quickly each one rebuilds blocks.",
         "mode": "markdown"
       },
       "transparent": true,
@@ -33,7 +33,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 2 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 3 },
       "id": 30,
       "panels": [],
       "title": "Network",
@@ -59,7 +59,7 @@
           }
         ]
       },
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 3 },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 4 },
       "id": 20,
       "options": {
         "colorMode": "value",
@@ -87,7 +87,7 @@
           "unit": "none"
         }
       },
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 3 },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 4 },
       "id": 21,
       "options": {
         "colorMode": "value",
@@ -116,7 +116,7 @@
           "unit": "s"
         }
       },
-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 3 },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 4 },
       "id": 22,
       "options": {
         "colorMode": "value",
@@ -134,7 +134,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 },
       "id": 31,
       "panels": [],
       "title": "Nodes",
@@ -142,7 +142,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "One row per monitored node. Status is whether the collector has reached the node's exporter in the last 30 seconds. Blocks behind is how far the node's last seen height trails the chain tip. The other columns cover the selected time range. Blocks reconstructed counts the blocks the node assembled from FIBRE/UDP chunks. FIBRE win rate is, of the blocks FIBRE/UDP and compact blocks raced to deliver to the node, the share FIBRE/UDP delivered; a block the node heard first over TCP, before any FIBRE peer had it, is not a race, and a node with no races shows a dash. Mean reconstruction is the node's mean time from the first UDP packet to the decoded block. A node that is down shows no figures.",
+      "description": "One row per monitored node. Status is whether the collector has reached the node's exporter in the last 30 seconds. Behind is how many blocks the node's last seen height trails the chain tip. The other columns cover the selected time range. Rebuilt counts the blocks the node assembled from FIBRE/UDP chunks. Win rate is, of the blocks FIBRE/UDP and compact blocks raced to deliver to the node, the share FIBRE/UDP delivered; a block the node heard first over TCP, before any FIBRE peer had it, is not a race, and a node with no races shows a dash. Mean time is the node's mean time from the first UDP packet to the decoded block. A node that is down shows no figures.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "fixed", "fixedColor": "text" },
@@ -150,7 +150,8 @@
             "align": "auto",
             "cellOptions": { "type": "auto" },
             "filterable": false,
-            "inspect": false
+            "inspect": false,
+            "minWidth": 64
           },
           "mappings": [],
           "noValue": "–",
@@ -163,11 +164,11 @@
               { "id": "mappings", "value": [{ "type": "value", "options": { "0": { "color": "red", "index": 0, "text": "● Down" }, "1": { "color": "green", "index": 1, "text": "● Up" } } }] },
               { "id": "custom.cellOptions", "value": { "type": "color-text" } },
               { "id": "custom.align", "value": "left" },
-              { "id": "custom.width", "value": 110 }
+              { "id": "custom.width", "value": 84 }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Blocks behind" },
+            "matcher": { "id": "byName", "options": "Behind" },
             "properties": [
               { "id": "unit", "value": "none" },
               { "id": "color", "value": { "mode": "thresholds" } },
@@ -176,28 +177,30 @@
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Blocks reconstructed" },
+            "matcher": { "id": "byName", "options": "Rebuilt" },
             "properties": [
               { "id": "unit", "value": "none" },
               { "id": "decimals", "value": 0 }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "FIBRE win rate" },
+            "matcher": { "id": "byName", "options": "Win rate" },
             "properties": [
               { "id": "unit", "value": "percentunit" },
-              { "id": "decimals", "value": 0 }
+              { "id": "decimals", "value": 0 },
+              { "id": "custom.minWidth", "value": 72 }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Mean reconstruction" },
+            "matcher": { "id": "byName", "options": "Mean time" },
             "properties": [
-              { "id": "unit", "value": "s" }
+              { "id": "unit", "value": "s" },
+              { "id": "custom.minWidth", "value": 84 }
             ]
           }
         ]
       },
-      "gridPos": { "h": 9, "w": 15, "x": 0, "y": 8 },
+      "gridPos": { "h": 9, "w": 15, "x": 0, "y": 9 },
       "id": 25,
       "options": {
         "cellHeight": "sm",
@@ -220,7 +223,7 @@
           "options": {
             "excludeByName": { "Time": true },
             "indexByName": { "node": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #E": 4, "Value #D": 5 },
-            "renameByName": { "node": "Node", "Value #A": "Status", "Value #B": "Blocks behind", "Value #C": "Blocks reconstructed", "Value #E": "FIBRE win rate", "Value #D": "Mean reconstruction" }
+            "renameByName": { "node": "Node", "Value #A": "Status", "Value #B": "Behind", "Value #C": "Rebuilt", "Value #E": "Win rate", "Value #D": "Mean time" }
           }
         }
       ],
@@ -228,27 +231,27 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Whether the collector could reach each node's exporter over the selected time range. Green is up; red is down or unreachable for 30 seconds or more. It follows the exporter, so a node can relay blocks while its strip is red.",
+      "description": "Whether the collector could reach each node's exporter over the selected time range. A faint green bar is up; a solid red bar is down or unreachable for 30 seconds or more. It follows the exporter, so a node can relay blocks while its strip is red.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": { "mode": "fixed", "fixedColor": "text" },
           "custom": {
-            "fillOpacity": 55,
+            "fillOpacity": 100,
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false,
             "lineWidth": 0,
             "spanNulls": false
           },
-          "mappings": [{ "type": "value", "options": { "0": { "index": 0, "text": "Down" }, "1": { "index": 1, "text": "Up" } } }],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+          "mappings": [{ "type": "value", "options": { "0": { "color": "red", "index": 0, "text": "Down" }, "1": { "color": "#56A64B66", "index": 1, "text": "Up" } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 9, "x": 15, "y": 8 },
+      "gridPos": { "h": 9, "w": 9, "x": 15, "y": 9 },
       "id": 26,
       "options": {
         "alignValue": "left",
-        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
         "mergeValues": true,
         "rowHeight": 0.55,
         "showValue": "never",
@@ -262,7 +265,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
       "id": 32,
       "panels": [],
       "title": "Blocks",
@@ -273,7 +276,7 @@
       "description": "Time from the first UDP packet of a block to the block being fully decoded. Each dot is one block on one node; two blocks less than about a minute apart on the same node share a dot at their average. Lower is better. The time includes waiting for chunks to arrive, so it rises when the node's mempool is missing more of the block: compare with Missing Transaction Bytes per Block beside it.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic-by-name" },
+          "color": { "mode": "palette-classic" },
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,
@@ -299,9 +302,17 @@
           "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] },
           "unit": "s"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byValue", "options": { "reducer": "allIsNull" } },
+            "properties": [
+              { "id": "custom.hideFrom", "value": { "legend": true, "tooltip": true, "viz": true } }
+            ]
+          }
+        ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
       "id": 12,
       "interval": "1m",
       "options": {
@@ -309,7 +320,7 @@
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "refId": "A", "expr": "rate(fibre_block_reconstruction_duration_seconds_sum{node=~\".*\"}[$__rate_interval]) / rate(fibre_block_reconstruction_duration_seconds_count{node=~\".*\"}[$__rate_interval])", "legendFormat": "{{node}}" }
+        { "refId": "A", "expr": "sum by (node) (rate(fibre_block_reconstruction_duration_seconds_sum[$__rate_interval])) / sum by (node) (rate(fibre_block_reconstruction_duration_seconds_count[$__rate_interval])) or on (node) (max by (node) (up{job=\"fibre\"}) * NaN)", "legendFormat": "{{node}}" }
       ],
       "title": "Reconstruction Time per Block",
       "type": "timeseries"
@@ -319,7 +330,7 @@
       "description": "The transactions of a block that a node did not already have in its mempool and had to receive as FIBRE chunks. Each dot is one block on one node, placed by the serialized bytes that were missing; hover over a dot to also see how many transactions that was. Two blocks less than about a minute apart on the same node share a dot at their average. More missing bytes mean more chunks to wait for, and a longer reconstruction.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic-by-name" },
+          "color": { "mode": "palette-classic" },
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,
@@ -358,10 +369,16 @@
               { "id": "custom.lineWidth", "value": 0 },
               { "id": "custom.showPoints", "value": "never" }
             ]
+          },
+          {
+            "matcher": { "id": "byValue", "options": { "reducer": "allIsNull" } },
+            "properties": [
+              { "id": "custom.hideFrom", "value": { "legend": true, "tooltip": true, "viz": true } }
+            ]
           }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
       "id": 18,
       "interval": "1m",
       "options": {
@@ -369,7 +386,7 @@
         "tooltip": { "mode": "multi", "sort": "none" }
       },
       "targets": [
-        { "refId": "A", "expr": "rate(fibre_block_missing_tx_bytes_sum{node=~\".*\"}[$__rate_interval]) / rate(fibre_block_missing_tx_bytes_count{node=~\".*\"}[$__rate_interval])", "legendFormat": "{{node}}" },
+        { "refId": "A", "expr": "sum by (node) (rate(fibre_block_missing_tx_bytes_sum[$__rate_interval])) / sum by (node) (rate(fibre_block_missing_tx_bytes_count[$__rate_interval])) or on (node) (max by (node) (up{job=\"fibre\"}) * NaN)", "legendFormat": "{{node}}" },
         { "refId": "B", "expr": "rate(fibre_block_missing_tx_count_sum{node=~\".*\"}[$__rate_interval]) / rate(fibre_block_missing_tx_count_count{node=~\".*\"}[$__rate_interval])", "legendFormat": "{{node}} transactions" }
       ],
       "title": "Missing Transactions per Block",
@@ -387,7 +404,7 @@
           "unit": "none"
         }
       },
-      "gridPos": { "h": 8, "w": 7, "x": 0, "y": 26 },
+      "gridPos": { "h": 8, "w": 7, "x": 0, "y": 27 },
       "id": 27,
       "options": {
         "displayMode": "basic",
@@ -417,7 +434,7 @@
       "description": "Share of the chunks a node received for a block that it did not need. These are mostly chunks it already had, from another peer or filled in from its own mempool, so a node fed by several peers normally shows more of them. Each dot is one block on one node. This is not packet loss: a lost packet never arrives to be counted, and a chunk that replaces it counts as needed.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic-by-name" },
+          "color": { "mode": "palette-classic" },
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,
@@ -445,9 +462,17 @@
           "min": 0,
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }] },
           "unit": "percentunit"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byValue", "options": { "reducer": "allIsNull" } },
+            "properties": [
+              { "id": "custom.hideFrom", "value": { "legend": true, "tooltip": true, "viz": true } }
+            ]
+          }
+        ]
       },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 26 },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 27 },
       "id": 16,
       "interval": "1m",
       "options": {
@@ -455,7 +480,7 @@
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "refId": "A", "expr": "1 - increase(fibre_chunks_used_total{node=~\".*\"}[$__rate_interval]) / increase(fibre_chunks_received_total{node=~\".*\"}[$__rate_interval])", "legendFormat": "{{node}}" }
+        { "refId": "A", "expr": "1 - sum by (node) (increase(fibre_chunks_used_total[$__rate_interval])) / sum by (node) (increase(fibre_chunks_received_total[$__rate_interval])) or on (node) (max by (node) (up{job=\"fibre\"}) * NaN)", "legendFormat": "{{node}}" }
       ],
       "title": "Unneeded Chunks per Block",
       "type": "timeseries"
@@ -505,7 +530,7 @@
           }
         ]
       },
-      "gridPos": { "h": 8, "w": 9, "x": 7, "y": 26 },
+      "gridPos": { "h": 8, "w": 9, "x": 7, "y": 27 },
       "id": 28,
       "options": {
         "cellHeight": "sm",
