@@ -220,3 +220,8 @@ __marimo__/
 # Nix build links
 result
 result-*
+
+# The Docker stack's node list and secrets (see docker/README.md)
+docker/prometheus/targets/*.yml
+docker/secrets/*
+!docker/secrets/README.md

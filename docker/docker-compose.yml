@@ -1,13 +1,24 @@
+# Prometheus and Grafana for FIBRE exporters, set up like the Nix collector
+# (nix/collector.nix): the same versions, alert rules and dashboards, the
+# exporters scraped over HTTPS with a password, and Grafana and Prometheus
+# reachable only from this machine unless GRAFANA_ADDRESS says otherwise.
+# `nix flake check` fails if the two drift apart. Setup: README.md.
 services:
   prometheus:
-    image: prom/prometheus:v3.8.1
+    image: prom/prometheus:v3.12.0
     container_name: fibre-prometheus
     restart: unless-stopped
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # The nodes to scrape, in targets/*.yml, which git ignores.
+      - ./prometheus/targets:/etc/prometheus/targets:ro
+      - ../alerts:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
+    secrets:
+      - exporter_ca
+      - exporter_password
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -25,15 +36,27 @@ services:
       start_period: 10s
 
   grafana:
-    image: grafana/grafana:12.3.0
+    image: grafana/grafana:13.0.11
     container_name: fibre-grafana
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${GRAFANA_ADDRESS:-127.0.0.1}:3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}
+      - GF_SECURITY_SECRET_KEY__FILE=/run/secrets/grafana_secret_key
       - GF_USERS_ALLOW_SIGN_UP=false
+      # The image pins Grafana, so nothing should change it at startup: by
+      # default it installs and updates plugins from grafana.com. Nor does it
+      # report to or fetch anything from there.
+      - GF_PLUGINS_PREINSTALL_DISABLED=true
+      - GF_PLUGINS_PUBLIC_KEY_RETRIEVAL_DISABLED=true
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      - GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false
+      - GF_NEWS_NEWS_FEED_ENABLED=false
+    secrets:
+      - grafana_secret_key
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -49,6 +72,16 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+# Files in secrets/, which git ignores; secrets/README.md says how to make
+# them. Compose refuses to start without them.
+secrets:
+  exporter_ca:
+    file: ./secrets/exporter-ca.crt
+  exporter_password:
+    file: ./secrets/exporter-password
+  grafana_secret_key:
+    file: ./secrets/grafana-secret-key
 
 volumes:
   prometheus_data:

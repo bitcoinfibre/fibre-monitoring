@@ -1,0 +1,12 @@
+# The nodes Prometheus scrapes. Copy this file to nodes.yml (git ignores
+# *.yml here) and list yours; Prometheus rereads it when it changes.
+#
+# The node label names the node on the dashboards. Each address must be one
+# its exporter's certificate holds (see generate-certs.sh); an exporter on
+# this machine is reached as host.docker.internal.
+- targets: ['host.docker.internal:9435']
+  labels:
+    node: 'node1'
+- targets: ['192.0.2.10:9435']
+  labels:
+    node: 'node2'

@@ -261,71 +261,46 @@ Show slow rows from the last 24 hours:
 
 ## Running the Monitoring Stack
 
-### 1. Configure Environment Variables
+The Docker stack in `docker/` runs Prometheus and Grafana as the Nix
+collector does (see [Running on NixOS](#running-on-nixos)): the same
+versions, alert rules and dashboards, with the exporters scraped over HTTPS
+with a password. [docker/README.md](docker/README.md) walks through the
+setup:
 
-```bash
-cd docker
-cp .env.example .env
-```
-
-Edit `.env` and set the required variables:
-
-```bash
-# Required
-GRAFANA_ADMIN_PASSWORD=your_secure_password
-
-# Optional (with defaults)
-GRAFANA_ADMIN_USER=admin
-```
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `GRAFANA_ADMIN_PASSWORD` | Yes | - | Grafana admin password |
-| `GRAFANA_ADMIN_USER` | No | admin | Grafana admin username |
-
-### 2. Start the Stack
-
-```bash
-docker compose up -d
-```
-
-### 3. Access the Dashboard
+1. Run each exporter with a certificate and a password (see
+   [TLS Encryption](#tls-encryption)).
+2. Put the CA, the exporters' password and a Grafana key in
+   `docker/secrets/` (see `docker/secrets/README.md`).
+3. List the nodes in `docker/prometheus/targets/nodes.yml`.
+4. Set `GRAFANA_ADMIN_PASSWORD` in `docker/.env`, then run
+   `docker compose up -d` in `docker/`.
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | Grafana | http://localhost:3000 | admin / (your password) |
 | Prometheus | http://localhost:9090 | - |
 
-The FIBRE dashboard is pre-loaded and available immediately.
+Both answer only on this machine. The FIBRE dashboards are pre-loaded.
 
 ## Multi-Node Monitoring
 
-To monitor multiple FIBRE nodes, edit `docker/prometheus/prometheus.yml`:
+List every node in `docker/prometheus/targets/nodes.yml`, each at the address
+its exporter's certificate holds:
 
 ```yaml
-scrape_configs:
-  - job_name: 'fibre'
-    scrape_interval: 10s
-    # If exporters have basic auth enabled
-    basic_auth:
-      username: 'prometheus'
-      password: 'yourpassword'
-    static_configs:
-      - targets: ['host.docker.internal:9435']
-        labels:
-          node: 'local_node'
-      - targets: ['192.168.1.10:9435']
-        labels:
-          node: 'remote_node_1'
-      - targets: ['192.168.1.20:9435']
-        labels:
-          node: 'remote_node_2'
+- targets: ['host.docker.internal:9435']
+  labels:
+    node: 'local_node'
+- targets: ['192.168.1.10:9435']
+  labels:
+    node: 'remote_node_1'
+- targets: ['192.168.1.20:9435']
+  labels:
+    node: 'remote_node_2'
 ```
 
-Then reload Prometheus:
-```bash
-docker compose restart prometheus
-```
+Prometheus picks up changes by itself. Git ignores the file, so no node's
+address ends up in the repository.
 
 ## Securing the Metrics Endpoint
 
@@ -344,17 +319,9 @@ sudo .venv/bin/python3 fibre_exporter.py \
   --metrics-auth-password your_secure_password
 ```
 
-Then configure Prometheus to authenticate when scraping (`docker/prometheus/prometheus.yml`):
-
-```yaml
-scrape_configs:
-  - job_name: 'fibre'
-    basic_auth:
-      username: 'prometheus'
-      password: 'your_secure_password'
-    static_configs:
-      - targets: ['host.docker.internal:9435']
-```
+Prometheus authenticates as `prometheus` with the same password: the Docker
+stack reads it from `docker/secrets/exporter-password`, the Nix collector from
+its `passwordFile`.
 
 **Note:** Both username and password must be set to enable authentication. The health check endpoint (`/health`) does not require authentication.
 
@@ -366,11 +333,11 @@ For multi-node setups where Prometheus scrapes exporters over the network, enabl
 
 #### 1. Generate certificates
 
-The included `generate-certs.sh` script creates a self-signed CA and per-node certificates with IP SANs:
+The included `generate-certs.sh` script creates a self-signed CA and a certificate for each node, for the address Prometheus scrapes it at: an IP, or a host name. The Docker stack reaches an exporter on its own machine as `host.docker.internal`:
 
 ```bash
-# Pass all node IPs as arguments
-./generate-certs.sh 192.168.1.10 192.168.1.11 192.168.1.12
+# Pass every node's address as an argument
+./generate-certs.sh 192.168.1.10 192.168.1.11 192.168.1.12 host.docker.internal
 ```
 
 This creates:
@@ -418,38 +385,16 @@ Prometheus metrics: https://0.0.0.0:9435/metrics
 
 #### 4. Configure Prometheus
 
-Mount the CA certificate into the Prometheus container by adding it to the volumes in `docker/docker-compose.yml`:
-
-```yaml
-services:
-  prometheus:
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ../certs/ca.crt:/etc/prometheus/fibre-ca.crt:ro   # TLS CA cert
-      - prometheus_data:/prometheus
-```
-
-Then update `docker/prometheus/prometheus.yml` to scrape over HTTPS:
-
-```yaml
-scrape_configs:
-  - job_name: 'fibre'
-    scheme: https
-    tls_config:
-      ca_file: /etc/prometheus/fibre-ca.crt
-    basic_auth:
-      username: 'prometheus'
-      password: 'your_secure_password'
-    static_configs:
-      - targets: ['192.168.1.10:9435', '192.168.1.11:9435']
-```
-
-Restart the stack to apply:
+Prometheus checks each exporter's certificate against the CA. For the Docker
+stack, copy it into `docker/secrets/`:
 
 ```bash
-docker compose -f docker/docker-compose.yml down
-docker compose -f docker/docker-compose.yml up -d
+cp certs/ca.crt docker/secrets/exporter-ca.crt
 ```
+
+and list each node in `docker/prometheus/targets/nodes.yml` at the address
+its certificate holds (see [Multi-Node Monitoring](#multi-node-monitoring)).
+The Nix collector takes the CA as `services.fibre-collector.tls.caFile`.
 
 ## Managing the Stack
 
@@ -491,13 +436,9 @@ sudo .venv/bin/python3 fibre_exporter.py ...
 
 ### Prometheus can't reach exporter
 
-```bash
-# Test from Prometheus container
-docker exec fibre-prometheus wget -qO- http://host.docker.internal:9435/metrics | head
-
-# Check targets status
-open http://localhost:9090/targets
-```
+Open http://localhost:9090/targets: each node shows its last error.
+[docker/README.md](docker/README.md#prometheus-cant-scrape-an-exporter)
+explains the usual ones.
 
 ### Docker stack fails to start
 
@@ -701,7 +642,9 @@ fibre-monitoring/
     ├── docker-compose.yml          # Container orchestration
     ├── .env.example                # Environment variables template
     ├── prometheus/
-    │   └── prometheus.yml          # Prometheus scrape config
+    │   ├── prometheus.yml          # Prometheus scrape and rule config
+    │   └── targets/                # The nodes to scrape (nodes.yml, kept out of git)
+    ├── secrets/                    # CA, passwords and Grafana key (kept out of git)
     └── grafana/
         └── provisioning/
             ├── datasources/

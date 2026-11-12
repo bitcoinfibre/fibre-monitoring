@@ -10,7 +10,8 @@ datasources:
     access: proxy
     url: http://prometheus:9090
     isDefault: true
-    editable: true
+    # Provisioned, so a change made in Grafana would be lost on restart.
+    editable: false
     jsonData:
       httpMethod: POST
       # The exporters' scrape interval (see prometheus.yml). Grafana sizes the

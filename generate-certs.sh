@@ -3,16 +3,20 @@
 # Generate a self-signed CA and per-node TLS certificates for fibre_exporter.
 #
 # Usage:
-#   ./generate-certs.sh <node-ip> [node-ip ...]
+#   ./generate-certs.sh <node-address> [node-address ...]
+#
+# Each address is an IP or a host name, the one Prometheus scrapes the node
+# at. The Docker stack reaches an exporter on its own machine as
+# host.docker.internal.
 #
 # Example:
-#   ./generate-certs.sh 192.168.1.10 192.168.1.11 10.0.0.5
+#   ./generate-certs.sh 192.168.1.10 192.168.1.11 host.docker.internal
 #
 # Output structure:
 #   certs/
 #     ca.crt              <- give this to Prometheus (tls_config.ca_file)
 #     ca.key              <- keep safe, only needed to sign new node certs
-#     <ip>/
+#     <address>/
 #       node.crt          <- copy to that node
 #       node.key          <- copy to that node
 #
@@ -27,10 +31,12 @@ CA_SUBJECT="/CN=FIBRE Exporter CA"
 # ────────────────────────────────────────────────────────────────────────────
 
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 <node-ip> [node-ip ...]"
+    echo "Usage: $0 <node-address> [node-address ...]"
+    echo ""
+    echo "Each address is an IP or a host name, the one Prometheus scrapes the node at."
     echo ""
     echo "Example:"
-    echo "  $0 192.168.1.10 192.168.1.11 10.0.0.5"
+    echo "  $0 192.168.1.10 192.168.1.11 host.docker.internal"
     exit 1
 fi
 
@@ -56,22 +62,28 @@ else
 fi
 
 # ── generate per-node certs ─────────────────────────────────────────────────
-for NODE_IP in "$@"; do
-    NODE_DIR="$OUT_DIR/$NODE_IP"
+for NODE in "$@"; do
+    NODE_DIR="$OUT_DIR/$NODE"
     mkdir -p "$NODE_DIR"
 
     if [ -f "$NODE_DIR/node.crt" ] && [ -f "$NODE_DIR/node.key" ]; then
-        echo "Skipping $NODE_IP (cert already exists)"
+        echo "Skipping $NODE (cert already exists)"
         continue
     fi
 
-    echo "Generating cert for $NODE_IP..."
+    echo "Generating cert for $NODE..."
 
-    # Create a temporary extension file for IP SAN
+    # The certificate must hold the address Prometheus connects to: an IP
+    # (IPv4, or IPv6 with colons) as an IP SAN, anything else as a DNS SAN.
+    if [[ "$NODE" =~ ^[0-9]+(\.[0-9]+){3}$ || "$NODE" == *:* ]]; then
+        NODE_SAN="IP:$NODE"
+    else
+        NODE_SAN="DNS:$NODE"
+    fi
     EXT_FILE=$(mktemp)
     cat > "$EXT_FILE" <<EXTEOF
 [v3_ext]
-subjectAltName = IP:$NODE_IP,IP:127.0.0.1
+subjectAltName = $NODE_SAN,IP:127.0.0.1
 keyUsage = digitalSignature, keyEncipherment
 extendedKeyUsage = serverAuth
 EXTEOF
@@ -81,7 +93,7 @@ EXTEOF
     openssl req -new \
         -key "$NODE_DIR/node.key" \
         -out "$NODE_DIR/node.csr" \
-        -subj "/CN=$NODE_IP" \
+        -subj "/CN=$NODE" \
         -nodes 2>/dev/null
 
     # Sign with CA
@@ -107,22 +119,26 @@ echo ""
 echo "Done. Next steps:"
 echo ""
 echo "  1. Copy certs to each node:"
-echo "     scp $OUT_DIR/<ip>/node.{crt,key} <user>@<ip>:/etc/fibre-exporter/"
+echo "     scp $OUT_DIR/<address>/node.{crt,key} <user>@<node>:/etc/fibre-exporter/"
 echo ""
-echo "  2. Start the exporter with TLS:"
+echo "  2. Start the exporter with TLS and a password:"
 echo "     fibre_exporter.py --bitcoind /path/to/bitcoind \\"
 echo "       --tls-cert /etc/fibre-exporter/node.crt \\"
-echo "       --tls-key  /etc/fibre-exporter/node.key"
+echo "       --tls-key  /etc/fibre-exporter/node.key \\"
+echo "       --metrics-auth-username prometheus \\"
+echo "       --metrics-auth-password <password>"
 echo ""
-echo "  3. Mount CA cert into Prometheus (docker-compose.yml):"
-echo "     volumes:"
-echo "       - ../certs/ca.crt:/etc/prometheus/fibre-ca.crt:ro"
+echo "  3. Give the CA and the password to the Docker stack's Prometheus:"
+echo "     cp $OUT_DIR/ca.crt docker/secrets/exporter-ca.crt"
+echo "     (see docker/secrets/README.md)"
 echo ""
-echo "  4. Configure Prometheus scrape (prometheus.yml):"
-echo "     scrape_configs:"
-echo "       - job_name: fibre"
-echo "         scheme: https"
-echo "         tls_config:"
-echo "           ca_file: /etc/prometheus/fibre-ca.crt"
-echo "         static_configs:"
-echo "           - targets: [$(printf "'%s:9435', " "$@" | sed 's/, $//')]"
+echo "  4. List each node at the address its certificate holds,"
+echo "     in docker/prometheus/targets/nodes.yml:"
+for NODE in "$@"; do
+    if [[ "$NODE" == *:* ]]; then TARGET="[$NODE]:9435"; else TARGET="$NODE:9435"; fi
+    echo "     - targets: ['$TARGET']"
+    echo "       labels:"
+    echo "         node: '<name>'"
+done
+echo ""
+echo "     The Nix collector takes the CA as services.fibre-collector.tls.caFile."
