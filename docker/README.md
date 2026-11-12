@@ -11,7 +11,7 @@ setups drift apart.
 
 Run these from the repository root unless a step says otherwise.
 
-### 1. Run the exporters with TLS and a password
+### 1. Make the certificates and the secrets
 
 Make a certificate for each exporter, for the address Prometheus scrapes it
 at. Docker reaches an exporter on this machine as `host.docker.internal`:
@@ -20,30 +20,42 @@ at. Docker reaches an exporter on this machine as `host.docker.internal`:
 ./generate-certs.sh host.docker.internal 192.168.1.10
 ```
 
-Then start each exporter with its certificate and the password:
+Then give Prometheus the CA and a new password for the exporters, and
+Grafana its key:
 
 ```bash
-sudo .venv/bin/python3 fibre_exporter.py \
+cp certs/ca.crt docker/secrets/exporter-ca.crt
+openssl rand -hex 24 | tr -d '\n' > docker/secrets/exporter-password
+openssl rand -hex 32 > docker/secrets/grafana-secret-key
+chmod 644 docker/secrets/exporter-ca.crt docker/secrets/exporter-password docker/secrets/grafana-secret-key
+```
+
+`secrets/README.md` explains each file. Git ignores them, and `certs/` with
+its keys.
+
+### 2. Run the exporters with TLS and the password
+
+Start each exporter with its certificate and the password. The password goes
+in the environment, which `sudo -E` passes on: as a command-line argument,
+anyone on the machine could read it in `ps`.
+
+```bash
+export FIBRE_METRICS_AUTH_USERNAME=prometheus
+export FIBRE_METRICS_AUTH_PASSWORD="$(cat docker/secrets/exporter-password)"
+sudo -E .venv/bin/python3 fibre_exporter.py \
   --bitcoind /path/to/bitcoind \
   --pid $(pgrep bitcoind) \
   --node-name mynode \
   --port 9435 \
   --tls-cert certs/host.docker.internal/node.crt \
-  --tls-key certs/host.docker.internal/node.key \
-  --metrics-auth-username prometheus \
-  --metrics-auth-password your_exporter_password
+  --tls-key certs/host.docker.internal/node.key
 ```
 
-### 2. Give Prometheus the CA and the password, and Grafana its key
-
-```bash
-cp certs/ca.crt docker/secrets/exporter-ca.crt
-printf '%s' 'your_exporter_password' > docker/secrets/exporter-password
-openssl rand -hex 32 > docker/secrets/grafana-secret-key
-chmod 644 docker/secrets/exporter-ca.crt docker/secrets/exporter-password docker/secrets/grafana-secret-key
-```
-
-`secrets/README.md` explains each file. Git ignores them.
+A second bitcoind on this machine needs an exporter of its own, with that
+bitcoind's `--pid` (`pgrep bitcoind` then prints both) and its own ports,
+such as `--port 9437 --health-port 9438`: the defaults, 9435 and 9436, are
+the first exporter's. An exporter on another machine takes that node's
+certificate and key, copied there, and the same password.
 
 ### 3. List the nodes
 

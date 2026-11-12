@@ -267,10 +267,11 @@ versions, alert rules and dashboards, with the exporters scraped over HTTPS
 with a password. [docker/README.md](docker/README.md) walks through the
 setup:
 
-1. Run each exporter with a certificate and a password (see
+1. Make a certificate for each exporter, and put the CA, a password for the
+   exporters and a Grafana key in `docker/secrets/` (see
+   `docker/secrets/README.md`).
+2. Run each exporter with its certificate and that password (see
    [TLS Encryption](#tls-encryption)).
-2. Put the CA, the exporters' password and a Grafana key in
-   `docker/secrets/` (see `docker/secrets/README.md`).
 3. List the nodes in `docker/prometheus/targets/nodes.yml`.
 4. Set `GRAFANA_ADMIN_PASSWORD` in `docker/.env`, then run
    `docker compose up -d` in `docker/`.
@@ -369,12 +370,12 @@ scp certs/192.168.1.10/node.{crt,key} user@192.168.1.10:/etc/fibre-exporter/
 #### 3. Start the exporter with TLS
 
 ```bash
-sudo .venv/bin/python3 fibre_exporter.py \
+export FIBRE_METRICS_AUTH_USERNAME=prometheus
+export FIBRE_METRICS_AUTH_PASSWORD=your_secure_password
+sudo -E .venv/bin/python3 fibre_exporter.py \
   --bitcoind /path/to/bitcoind \
   --tls-cert /etc/fibre-exporter/node.crt \
-  --tls-key  /etc/fibre-exporter/node.key \
-  --metrics-auth-username prometheus \
-  --metrics-auth-password your_secure_password
+  --tls-key  /etc/fibre-exporter/node.key
 ```
 
 The exporter will log:

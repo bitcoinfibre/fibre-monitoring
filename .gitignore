@@ -221,6 +221,9 @@ __marimo__/
 result
 result-*
 
+# generate-certs.sh's CA and node keys and certificates
+certs/
+
 # The Docker stack's node list and secrets (see docker/README.md)
 docker/prometheus/targets/*.yml
 docker/secrets/*
