@@ -33,7 +33,7 @@ from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily
 # Version
 # ============================================================================
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 # ============================================================================
 # Configuration
