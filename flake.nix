@@ -55,6 +55,69 @@
               touch $out
             '';
 
+        # The Docker stack against the collector module as Nix evaluates it.
+        docker-matches-nix =
+          let
+            lib = nixpkgs.lib;
+            evaluated = lib.nixosSystem {
+              inherit system;
+              modules = [
+                self.nixosModules.fibre-collector
+                {
+                  services.fibre-collector = {
+                    enable = true;
+                    tls.caFile = "/ca.crt";
+                    passwordFile = "/scrape-password";
+                    grafana = {
+                      adminPasswordFile = "/admin-password";
+                      secretKeyFile = "/secret-key";
+                    };
+                  };
+                  system.stateVersion = "26.05";
+                }
+              ];
+            };
+            inherit (evaluated.config.services) grafana prometheus;
+            collector = pkgs.writeText "fibre-collector.json" (
+              builtins.toJSON {
+                grafana = {
+                  inherit (grafana.package) version;
+                  # Only what the collector module sets, not nixpkgs' defaults.
+                  settings = map (d: d.value) (
+                    builtins.filter (
+                      d: lib.hasSuffix "/nix/collector.nix" d.file
+                    ) evaluated.options.services.grafana.settings.definitionsWithLocations
+                  );
+                  datasource = builtins.head grafana.provision.datasources.settings.datasources;
+                };
+                prometheus = {
+                  inherit (prometheus.package) version;
+                  inherit (prometheus) globalConfig retentionTime listenAddress;
+                  ruleFiles = map (file: baseNameOf (toString file)) prometheus.ruleFiles;
+                  fibreJob = removeAttrs (lib.findFirst (
+                    job: job.job_name == "fibre"
+                  ) null prometheus.scrapeConfigs) [ "static_configs" ];
+                };
+              }
+            );
+            repository = lib.fileset.toSource {
+              root = ./.;
+              fileset = lib.fileset.unions [
+                ./docker
+                ./alerts
+                ./dashboards
+              ];
+            };
+          in
+          pkgs.runCommand "fibre-docker-matches-nix"
+            {
+              nativeBuildInputs = [ (pkgs.python3.withPackages (ps: [ ps.pyyaml ])) ];
+            }
+            ''
+              python3 ${./nix/tests/docker_matches_nix.py} ${collector} ${repository}
+              touch $out
+            '';
+
         collector-vm = import ./nix/tests/collector.nix {
           inherit pkgs;
           module = self.nixosModules.fibre-collector;

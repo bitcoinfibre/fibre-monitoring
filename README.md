@@ -598,8 +598,11 @@ notified, and the build warns about it.
 
 `nix flake check` runs the exporter's import check and tests the alert rules
 with promtool. It also checks that every metric the dashboards and alert rules
-name is one the exporter defines, and runs the collector in a VM against a
-stand-in exporter, sending every dashboard query through Grafana.
+name is one the exporter defines, tests the per-block charts' own queries with
+promtool, and runs the collector in a VM against a stand-in exporter, sending
+every dashboard query through Grafana. Last, it checks that the Docker stack
+in `docker/` still matches the collector: the same Grafana and Prometheus
+versions, Grafana settings, datasource, alert rules and scrape security.
 
 ## Metrics Reference
 
