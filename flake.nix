@@ -29,7 +29,7 @@
 
         metric-names = pkgs.runCommand "fibre-metric-names" { nativeBuildInputs = [ pkgs.python3 ]; } ''
           python3 ${./nix/tests/metric_names.py} ${./fibre_exporter.py} \
-            ${./alerts}/*.yml ${./docker/grafana/provisioning/dashboards}/*.json
+            ${./alerts}/*.yml ${./dashboards}/*.json
           touch $out
         '';
 
@@ -49,7 +49,7 @@
               ];
             }
             ''
-              python3 ${./nix/tests/dashboard_queries.py} ${./docker/grafana/provisioning/dashboards} \
+              python3 ${./nix/tests/dashboard_queries.py} ${./dashboards} \
                 ${./nix/tests/dashboard-queries.test.yml} dashboard-queries.test.yml
               promtool test rules dashboard-queries.test.yml
               touch $out

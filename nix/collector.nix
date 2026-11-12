@@ -1,7 +1,7 @@
 # A collector for FIBRE exporters, built on nixpkgs' Prometheus and Grafana
 # modules. Prometheus scrapes the exporters, by default over TLS with basic
 # auth, and evaluates alerts/fibre.rules.yml. Grafana shows the dashboards
-# from docker/grafana, the same ones the Docker setup provisions.
+# in dashboards/, the same ones the Docker setup provisions.
 {
   config,
   lib,
@@ -11,10 +11,11 @@ let
   inherit (lib) mkOption types;
   cfg = config.services.fibre-collector;
 
-  # The dashboards only; the folder also holds Docker's provider config.
+  # The dashboards only, so another file beside them leaves Grafana's copy
+  # alone.
   dashboards = lib.fileset.toSource {
-    root = ../docker/grafana/provisioning/dashboards;
-    fileset = lib.fileset.fileFilter (file: file.hasExt "json") ../docker/grafana/provisioning/dashboards;
+    root = ../dashboards;
+    fileset = lib.fileset.fileFilter (file: file.hasExt "json") ../dashboards;
   };
 
   # A runtime path, so the secret stays out of the world-readable store.

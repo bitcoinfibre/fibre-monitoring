@@ -598,7 +598,7 @@ services.fibre-exporter = {
 
 The monitoring host runs the collector instead of the Docker setup: Prometheus
 scrapes the exporters and evaluates the alert rules in `alerts/`, and Grafana
-serves the dashboards in `docker/grafana`. It verifies each exporter's
+serves the dashboards in `dashboards/`. It verifies each exporter's
 certificate against the CA from `generate-certs.sh`, so each target must use a
 name or address its certificate holds:
 
@@ -691,6 +691,9 @@ fibre-monitoring/
 ├── flake.nix                      # Nix package and NixOS modules
 ├── nix/                           # Their definitions and the collector's VM test
 ├── alerts/                        # Prometheus alert rules and their tests
+├── dashboards/                    # Grafana dashboards, for Docker and Nix alike
+│   ├── fibre-dashboard.json       # Main dashboard (with node filter)
+│   └── fibre-dashboard-public.json # Public-shareable dashboard (all nodes)
 ├── README.md                       # This file
 ├── METRICS.md                      # Detailed metrics reference
 ├── ARCHITECTURE.md                 # Architecture documentation
@@ -704,6 +707,5 @@ fibre-monitoring/
             ├── datasources/
             │   └── prometheus.yml  # Prometheus datasource
             └── dashboards/
-                ├── dashboard.yml   # Dashboard provisioner
-                └── fibre-dashboard.json  # Pre-built dashboard
+                └── dashboard.yml   # Dashboard provisioner
 ```

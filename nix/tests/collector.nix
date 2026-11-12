@@ -6,7 +6,7 @@
 let
   scrapePassword = "test-scrape-password";
   adminPassword = "test-admin-password";
-  dashboards = ../../docker/grafana/provisioning/dashboards;
+  dashboards = ../../dashboards;
 
   # Test-only CA and a certificate for the host name "node".
   certs = pkgs.runCommand "fibre-collector-test-certs" { nativeBuildInputs = [ pkgs.openssl ]; } ''

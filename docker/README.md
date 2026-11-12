@@ -73,9 +73,16 @@ docker/
         ├── datasources/
         │   └── prometheus.yml  # Prometheus datasource
         └── dashboards/
-            ├── dashboard.yml               # Dashboard provisioner config
-            ├── fibre-dashboard.json        # Main dashboard (with node filter)
-            └── fibre-dashboard-public.json # Public-shareable dashboard (all nodes)
+            └── dashboard.yml   # Dashboard provisioner config
+```
+
+The dashboards themselves are in `../dashboards/`, shared with the Nix
+collector:
+
+```
+dashboards/
+├── fibre-dashboard.json        # Main dashboard (with node filter)
+└── fibre-dashboard-public.json # Public-shareable dashboard (all nodes)
 ```
 
 ## Public Dashboard
